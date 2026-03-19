@@ -37,7 +37,7 @@ const requestOTP = asyncHandler(async (req, res) => {
 
   await sendOTP(phoneNo, otp);
 
-  return sendSuccess(res, 200, "OTP sent successfully");
+  return sendSuccess(res, 200, "OTP sent successfully", otp);
 });
 
 // ─── Step 2: Verify OTP ───────────────────────────────────
