@@ -11,10 +11,12 @@ const {
   completeGarageProfile,
   refresh,
   logout,
+  resendOTP,
 } = require("../controllers/auth.controller");
 const protect = require("../middlewares/auth");
 
 router.post("/request-otp", validate(requestOtpSchema), requestOTP);
+router.post("/resend-otp", validate(requestOtpSchema), resendOTP);
 router.post("/verify-otp", validate(otpVerifySchema), verifyOTP);
 router.post(
   "/update-profile",

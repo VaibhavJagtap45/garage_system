@@ -67,13 +67,51 @@ const verifyOTP = asyncHandler(async (req, res) => {
 
   res.cookie("refreshToken", refreshToken, REFRESH_COOKIE_OPTIONS);
 
-  return sendSuccess(res, 200, "Mobile verified successfully", {
-    accessToken,
-    user,
-  });
+  return sendSuccess(res, 200, "Mobile verified successfully", { accessToken });
 });
 
-// ─── Step 3: Complete Garage Profile ─────────────────────
+// ─── Step 3: Resend OTP ───────────────────────────────────
+const resendOTP = asyncHandler(async (req, res) => {
+  const { phoneNo } = req.body;
+
+  const user = await User.findOne({ phoneNo });
+  if (!user)
+    return sendError(
+      res,
+      404,
+      "No account found with this number. Request OTP first.",
+    );
+
+  if (user.isVerified)
+    return sendError(res, 400, "This number is already verified.");
+
+  if (user.otp?.expiresAt) {
+    const otpLifetimeMs = OTP_EXPIRY_MINUTES * 60 * 1000;
+    const otpCreatedAt = new Date(user.otp.expiresAt).getTime() - otpLifetimeMs;
+    const secondsSinceSent = (Date.now() - otpCreatedAt) / 1000;
+
+    if (secondsSinceSent < 60) {
+      const waitSeconds = Math.ceil(60 - secondsSinceSent);
+      return sendError(
+        res,
+        429,
+        `Please wait ${waitSeconds} seconds before requesting a new OTP.`,
+      );
+    }
+  }
+
+  const otp = generateOTP();
+  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+  await User.updateOne(
+    { phoneNo },
+    { otp: { code: hashOTP(otp), expiresAt, attempts: 0 } },
+  );
+  await sendOTP(phoneNo, otp);
+  return sendSuccess(res, 200, "OTP resent successfully", otp);
+});
+
+// ─── Step 4: Complete Garage Profile ─────────────────────
 const completeGarageProfile = asyncHandler(async (req, res) => {
   const userId = req.user._id;
 
@@ -135,15 +173,14 @@ const refresh = asyncHandler(async (req, res) => {
 // ─── Logout ───────────────────────────────────────────────
 const logout = asyncHandler(async (req, res) => {
   await revokeRefreshToken(req.user._id);
-
   res.clearCookie("refreshToken");
-
   return sendSuccess(res, 200, "Logged out successfully");
 });
 
 module.exports = {
   requestOTP,
   verifyOTP,
+  resendOTP,
   completeGarageProfile,
   refresh,
   logout,
