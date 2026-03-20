@@ -17,7 +17,7 @@ const protect = require("../middlewares/auth");
 router.post("/request-otp", validate(requestOtpSchema), requestOTP);
 router.post("/verify-otp", validate(otpVerifySchema), verifyOTP);
 router.post(
-  "/garage-profile",
+  "/update-profile",
   protect,
   validate(garageProfileSchema),
   completeGarageProfile,

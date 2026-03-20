@@ -67,7 +67,10 @@ const verifyOTP = asyncHandler(async (req, res) => {
 
   res.cookie("refreshToken", refreshToken, REFRESH_COOKIE_OPTIONS);
 
-  return sendSuccess(res, 200, "Mobile verified successfully", { accessToken });
+  return sendSuccess(res, 200, "Mobile verified successfully", {
+    accessToken,
+    user,
+  });
 });
 
 // ─── Step 3: Complete Garage Profile ─────────────────────
