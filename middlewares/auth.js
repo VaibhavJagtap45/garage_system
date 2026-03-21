@@ -1,10 +1,17 @@
-// middleware/auth.js
+// middlewares/auth.js
 const jwt = require("jsonwebtoken");
 const User = require("../models/User.model");
 
+// ─────────────────────────────────────────────────────────────────
+//  protect
+//
+//  Guards any route that requires an authenticated user.
+//  Validates the Bearer access token, ensures the user still exists
+//  and has a verified mobile number, then attaches `req.user`.
+// ─────────────────────────────────────────────────────────────────
 const protect = async (req, res, next) => {
   try {
-    // 1. Extract token
+    // 1. Extract token from Authorization header
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -16,20 +23,21 @@ const protect = async (req, res, next) => {
 
     const token = authHeader.split(" ")[1];
 
-    // 2. Verify token
+    // 2. Verify signature and expiry
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
     } catch (err) {
       const message =
         err.name === "TokenExpiredError"
-          ? "Token expired. Please login again."
+          ? "Token expired. Please refresh your session."
           : "Invalid token.";
       return res.status(401).json({ success: false, message });
     }
 
-    // 3. Check user still exists
-    const user = await User.findById(decoded.sub).select("-otp");
+    // 3. Confirm the account still exists
+    //    Exclude otp and refreshToken — we never need them downstream
+    const user = await User.findById(decoded.sub).select("-otp -refreshToken");
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -37,7 +45,7 @@ const protect = async (req, res, next) => {
       });
     }
 
-    // 4. Check user is verified
+    // 4. Require a verified mobile number
     if (!user.isVerified) {
       return res.status(403).json({
         success: false,
@@ -45,7 +53,7 @@ const protect = async (req, res, next) => {
       });
     }
 
-    // 5. Attach user to request
+    // 5. Attach to request and continue
     req.user = user;
     next();
   } catch (err) {

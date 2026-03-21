@@ -1,6 +1,7 @@
 const { z } = require("zod");
 
-// ─── Reusable field definitions ───────────────────────────
+// ─── Reusable field definitions ───────────────────────────────────
+
 const phoneNoField = z
   .string()
   .regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit Indian mobile number");
@@ -20,11 +21,12 @@ const optionalUrlField = (message = "Must be a valid URL") =>
     .or(z.literal(""))
     .transform((v) => (v === "" ? undefined : v));
 
-// ─── Schemas ──────────────────────────────────────────────
+// ─── Schema: Request OTP ──────────────────────────────────────────
 const requestOtpSchema = z.object({
   phoneNo: phoneNoField,
 });
 
+// ─── Schema: Verify OTP ───────────────────────────────────────────
 const otpVerifySchema = z.object({
   phoneNo: phoneNoField,
   otp: z
@@ -33,13 +35,28 @@ const otpVerifySchema = z.object({
     .regex(/^\d+$/, "OTP must be numeric"),
 });
 
+// ─── Schema: Complete Garage Profile ─────────────────────────────
+//
+//  This schema mirrors the form that the frontend sends.
+//  It validates both user-level fields (fullName, emailId, state)
+//  and garage-level fields together in one pass — Zod strips/coerces
+//  the values before they reach the controller which then splits them
+//  into the appropriate documents.
+//
+//  isGstApplicable can arrive as a boolean (JSON) or the strings
+//  "true"/"false" (FormData) — both are handled via the preprocess.
+// ─────────────────────────────────────────────────────────────────
 const garageProfileSchema = z
   .object({
+    // ── User-level fields ──────────────────────────────────────
     fullName: z.string().min(2, "Min 2 characters").max(50).trim().optional(),
     emailId: emailField,
-    garageName: z.string().min(2, "Min 2 characters").trim(),
-    garageOwnerName: z.string().min(2, "Min 2 characters").trim(),
-    garageAddress: z.string().min(5, "Min 5 characters").trim(),
+    state: z.string().trim().optional(),
+
+    // ── Garage-level fields ────────────────────────────────────
+    garageName: z.string().min(2, "Min 2 characters").max(100).trim(),
+    garageOwnerName: z.string().min(2, "Min 2 characters").max(100).trim(),
+    garageAddress: z.string().min(5, "Min 5 characters").max(300).trim(),
     garageContactNumber: z
       .string()
       .regex(/^[6-9]\d{9}$/, "Invalid contact number"),
@@ -47,8 +64,17 @@ const garageProfileSchema = z
       errorMap: () => ({ message: "Must be twoWheeler or fourWheeler" }),
     }),
     garageLogo: optionalUrlField("Garage logo must be a valid URL"),
-    state: z.string().trim().optional(),
-    isGstApplicable: z.boolean().default(false),
+
+    // ── GST — coerce FormData strings to boolean ───────────────
+    isGstApplicable: z.preprocess(
+      (v) => {
+        if (typeof v === "boolean") return v;
+        if (v === "true") return true;
+        if (v === "false") return false;
+        return false;
+      },
+      z.boolean().default(false),
+    ),
     gstNumber: z
       .string()
       .regex(

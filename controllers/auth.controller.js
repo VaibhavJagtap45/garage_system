@@ -5,6 +5,7 @@ const {
   hashOTP,
 } = require("../services/otp.service");
 const User = require("../models/User.model");
+const Garage = require("../models/Garage.model");
 const asyncHandler = require("../utils/asyncHandler");
 const {
   signAccessToken,
@@ -14,7 +15,7 @@ const {
 } = require("../utils/token.utils");
 const { sendSuccess, sendError } = require("../utils/response.utils");
 
-// ─── Cookie config — defined once, reused everywhere ──────
+// ─── Cookie config — defined once, reused everywhere ──────────────
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
@@ -22,7 +23,11 @@ const REFRESH_COOKIE_OPTIONS = {
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
-// ─── Step 1: Request OTP ──────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+//  Step 1 · Request OTP
+//  Creates a user document (upsert) tied to the phone number and
+//  fires the OTP.  No sensitive data is returned in production.
+// ─────────────────────────────────────────────────────────────────
 const requestOTP = asyncHandler(async (req, res) => {
   const { phoneNo } = req.body;
 
@@ -40,7 +45,10 @@ const requestOTP = asyncHandler(async (req, res) => {
   return sendSuccess(res, 200, "OTP sent successfully", otp);
 });
 
-// ─── Step 2: Verify OTP ───────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+//  Step 2 · Verify OTP
+//  Validates the OTP, marks the user as verified, and issues tokens.
+// ─────────────────────────────────────────────────────────────────
 const verifyOTP = asyncHandler(async (req, res) => {
   const { phoneNo, otp } = req.body;
 
@@ -62,19 +70,31 @@ const verifyOTP = asyncHandler(async (req, res) => {
 
   await User.updateOne({ phoneNo }, { isVerified: true, $unset: { otp: "" } });
 
-  const accessToken = signAccessToken(user);
-  const refreshToken = await generateAndSaveRefreshToken(user);
+  const verifiedUser = await User.findOne({ phoneNo });
+
+  const accessToken = signAccessToken(verifiedUser);
+  const refreshToken = await generateAndSaveRefreshToken(verifiedUser);
 
   res.cookie("refreshToken", refreshToken, REFRESH_COOKIE_OPTIONS);
 
-  return sendSuccess(res, 200, "Mobile verified successfully", { accessToken });
+  const garage = await Garage.findOne({ owner: verifiedUser._id }).lean();
+
+  return sendSuccess(res, 200, "Mobile verified successfully", {
+    accessToken,
+    isProfileComplete: garage?.isProfileComplete ?? false,
+    user,
+  });
 });
 
-// ─── Step 3: Resend OTP ───────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+//  Step 3 · Resend OTP
+//  Rate-limited to one resend per 60 seconds.
+// ─────────────────────────────────────────────────────────────────
 const resendOTP = asyncHandler(async (req, res) => {
   const { phoneNo } = req.body;
 
   const user = await User.findOne({ phoneNo });
+
   if (!user)
     return sendError(
       res,
@@ -85,6 +105,7 @@ const resendOTP = asyncHandler(async (req, res) => {
   if (user.isVerified)
     return sendError(res, 400, "This number is already verified.");
 
+  // Enforce 60-second cooldown between resend requests
   if (user.otp?.expiresAt) {
     const otpLifetimeMs = OTP_EXPIRY_MINUTES * 60 * 1000;
     const otpCreatedAt = new Date(user.otp.expiresAt).getTime() - otpLifetimeMs;
@@ -107,53 +128,83 @@ const resendOTP = asyncHandler(async (req, res) => {
     { phoneNo },
     { otp: { code: hashOTP(otp), expiresAt, attempts: 0 } },
   );
+
   await sendOTP(phoneNo, otp);
+
   return sendSuccess(res, 200, "OTP resent successfully", otp);
 });
 
-// ─── Step 4: Complete Garage Profile ─────────────────────
+// ─────────────────────────────────────────────────────────────────
+//  Step 4 · Complete Garage Profile
+//
+//  Accepts multipart/form-data OR application/json (the Zod validator
+//  handles both after the body is parsed by express.json / multer).
+// ─────────────────────────────────────────────────────────────────
 const completeGarageProfile = asyncHandler(async (req, res) => {
-  const userId = req.user._id;
-
+  // Only owners can set garage details
   if (req.user.role !== "owner")
     return sendError(res, 403, "Only owners can set garage details");
 
+  const userId = req.user._id;
+
   const {
+    // User-level fields
     fullName,
     emailId,
+    state,
+    // Garage-level fields
     garageName,
     garageOwnerName,
     garageAddress,
     garageContactNumber,
     garageType,
     garageLogo,
-    state,
     isGstApplicable,
     gstNumber,
   } = req.body;
 
-  const updated = await User.findByIdAndUpdate(
+  // ── 1. Update user profile fields ──────────────────────────────
+  const updatedUser = await User.findByIdAndUpdate(
     userId,
     {
-      fullName,
-      emailId,
-      garageName,
-      garageOwnerName,
-      garageAddress,
-      garageContactNumber,
-      garageType,
-      garageLogo,
-      state,
-      isGstApplicable,
-      gstNumber: isGstApplicable ? gstNumber : null,
+      ...(fullName !== undefined && { fullName }),
+      ...(emailId !== undefined && { emailId }),
+      ...(state !== undefined && { state }),
     },
-    { returnDocument: "after", runValidators: true },
+    { new: true, runValidators: true },
   );
 
-  return sendSuccess(res, 200, "Garage profile completed", { user: updated });
+  // ── 2. Upsert garage document ───────────────────────────────────
+  //  findOneAndUpdate with upsert handles both first-time setup and
+  //  subsequent edits without the controller caring which case it is.
+  const garagePayload = {
+    garageName,
+    garageOwnerName,
+    garageAddress,
+    garageContactNumber,
+    garageType,
+    isGstApplicable: !!isGstApplicable,
+    gstNumber: isGstApplicable ? (gstNumber ?? null) : null,
+    isProfileComplete: true,
+    ...(garageLogo !== undefined && { garageLogo }),
+    ...(state !== undefined && { state }),
+  };
+
+  const garage = await Garage.findOneAndUpdate(
+    { owner: userId },
+    { $set: garagePayload },
+    { upsert: true, new: true, runValidators: true },
+  );
+
+  return sendSuccess(res, 200, "Garage profile completed", {
+    user: updatedUser,
+    garage,
+  });
 });
 
-// ─── Refresh Token ────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+//  Refresh Access Token
+// ─────────────────────────────────────────────────────────────────
 const refresh = asyncHandler(async (req, res) => {
   const incomingToken = req.cookies?.refreshToken;
 
@@ -170,7 +221,9 @@ const refresh = asyncHandler(async (req, res) => {
   });
 });
 
-// ─── Logout ───────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+//  Logout
+// ─────────────────────────────────────────────────────────────────
 const logout = asyncHandler(async (req, res) => {
   await revokeRefreshToken(req.user._id);
   res.clearCookie("refreshToken");
