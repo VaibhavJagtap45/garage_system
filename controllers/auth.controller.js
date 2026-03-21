@@ -83,6 +83,7 @@ const verifyOTP = asyncHandler(async (req, res) => {
     accessToken,
     isProfileComplete: garage?.isProfileComplete ?? false,
     user,
+    garage,
   });
 });
 
