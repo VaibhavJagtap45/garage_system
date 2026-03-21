@@ -66,15 +66,12 @@ const garageProfileSchema = z
     garageLogo: optionalUrlField("Garage logo must be a valid URL"),
 
     // ── GST — coerce FormData strings to boolean ───────────────
-    isGstApplicable: z.preprocess(
-      (v) => {
-        if (typeof v === "boolean") return v;
-        if (v === "true") return true;
-        if (v === "false") return false;
-        return false;
-      },
-      z.boolean().default(false),
-    ),
+    isGstApplicable: z.preprocess((v) => {
+      if (typeof v === "boolean") return v;
+      if (v === "true") return true;
+      if (v === "false") return false;
+      return false;
+    }, z.boolean().default(false)),
     gstNumber: z
       .string()
       .regex(
@@ -90,8 +87,36 @@ const garageProfileSchema = z
     path: ["gstNumber"],
   });
 
+// ─── Schema: Add User  (POST /api/user/add-user) ─────────────────
+//
+//  · role is supplied by the frontend — restricted to non-owner values
+//  · At least one of phoneNo or emailId must be present
+//  · fullName is optional
+// ─────────────────────────────────────────────────────────────────
+const addUserSchema = z
+  .object({
+    phoneNo: phoneNoField.optional(),
+    emailId: z
+      .string()
+      .email("Invalid email format")
+      .toLowerCase()
+      .trim()
+      .optional(),
+    fullName: z.string().min(2, "Min 2 characters").max(100).trim().optional(),
+    role: z.enum(["customer", "member", "vendor"], {
+      errorMap: () => ({
+        message: "Role must be one of: customer, member, vendor",
+      }),
+    }),
+  })
+  .refine((data) => data.phoneNo || data.emailId, {
+    message: "At least one of phoneNo or emailId is required",
+    path: ["phoneNo"],
+  });
+
 module.exports = {
   requestOtpSchema,
   otpVerifySchema,
   garageProfileSchema,
+  addUserSchema,
 };
