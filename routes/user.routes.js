@@ -8,10 +8,10 @@ const { getProfile, addUser } = require("../controllers/user.controller");
 router.use(protect);
 // ─────────────────────────────────────────────────────────────────
 //  GET  /api/user/profile
-router.get("/get-profile", getProfile);
+router.get("/get-profile", protect, getProfile);
 
 // ─────────────────────────────────────────────────────────────────
 //  POST /api/user/add-user
-router.post("/add-user", validate(addUserSchema), addUser);
+router.post("/add-user", protect, validate(addUserSchema), addUser);
 
 module.exports = router;

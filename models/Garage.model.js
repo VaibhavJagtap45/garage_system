@@ -42,7 +42,7 @@ const GarageSchema = new mongoose.Schema(
       type: String,
       required: [true, "Garage type is required"],
       enum: {
-        values: ["twoWheeler", "fourWheeler", "Both"],
+        values: ["twoWheeler", "fourWheeler", "both"],
         message: "garageType must be twoWheeler or fourWheeler",
       },
     },
