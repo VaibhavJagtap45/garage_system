@@ -1,16 +1,16 @@
 const dotenv = require("dotenv");
 dotenv.config();
 
-const express      = require("express");
-const cors         = require("cors");
-const helmet       = require("helmet");
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
-const rateLimit    = require("express-rate-limit");
-
+const rateLimit = require("express-rate-limit");
+const UserRoutes = require("./routes/user.routes");
 const { connectDB } = require("./config/dbConnect");
-const AuthRoutes    = require("./routes/auth.routes");
+const AuthRoutes = require("./routes/auth.routes");
 
-const app  = express();
+const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ── Security headers ───────────────────────────────────────────────
@@ -25,9 +25,9 @@ app.use(
     origin: process.env.ALLOWED_ORIGINS?.split(",") ?? [
       "http://localhost:3000",
     ],
-    methods:        ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials:    true,
+    credentials: true,
   }),
 );
 
@@ -44,7 +44,7 @@ app.get("/", (_req, res) =>
 // ── API Routes ─────────────────────────────────────────────────────
 const API_VERSION = process.env.BACKEND_VERSION ?? "v1";
 app.use(`/api/${API_VERSION}/auth`, AuthRoutes);
-
+app.use(`/api/${API_VERSION}/user`, UserRoutes);
 // ── 404 handler ────────────────────────────────────────────────────
 app.use((_req, res) =>
   res.status(404).json({ success: false, message: "Route not found." }),
