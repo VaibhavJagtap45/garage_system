@@ -93,8 +93,30 @@ const garageProfileSchema = z
 //  · At least one of phoneNo or emailId must be present
 //  · fullName is optional
 // ─────────────────────────────────────────────────────────────────
+// const addUserSchema = z
+//   .object({
+//     phoneNo: phoneNoField.optional(),
+//     emailId: z
+//       .string()
+//       .email("Invalid email format")
+//       .toLowerCase()
+//       .trim()
+//       .optional(),
+//     fullName: z.string().min(2, "Min 2 characters").max(100).trim().optional(),
+//     role: z.enum(["customer", "member", "vendor"], {
+//       errorMap: () => ({
+//         message: "Role must be one of: customer, member, vendor",
+//       }),
+//     }),
+//   })
+//   .refine((data) => data.phoneNo || data.emailId, {
+//     message: "At least one of phoneNo or emailId is required",
+//     path: ["phoneNo"],
+//   });
+// ─── Schema: Add User  (POST /api/user/add-user) ─────────────────
 const addUserSchema = z
   .object({
+    // ── User fields ────────────────────────────────────────────
     phoneNo: phoneNoField.optional(),
     emailId: z
       .string()
@@ -103,16 +125,51 @@ const addUserSchema = z
       .trim()
       .optional(),
     fullName: z.string().min(2, "Min 2 characters").max(100).trim().optional(),
+    address: z.string().trim().optional(),
     role: z.enum(["customer", "member", "vendor"], {
       errorMap: () => ({
         message: "Role must be one of: customer, member, vendor",
       }),
     }),
+
+    // ── Vehicle fields (only used when role === customer) ──────
+    vehicleBrand: z.string().trim().optional(),
+    vehicleModel: z.string().trim().optional(),
+    vehicleRegisterNo: z.string().trim().toUpperCase().optional(),
+    vehiclePurchaseDate: z.string().datetime().optional(),
+    vehicleEngineNo: z.string().trim().optional(),
+    vehicleVinNo: z.string().trim().optional(),
+    vehicleInsuranceProvider: z.string().trim().optional(),
+    vehiclePolicyNo: z.string().trim().optional(),
+    vehicleInsuranceExpire: z.string().datetime().optional(),
+    vehicleRegCertificate: z.string().trim().optional(),
+    vehicleInsuranceDoc: z.string().trim().optional(),
   })
   .refine((data) => data.phoneNo || data.emailId, {
     message: "At least one of phoneNo or emailId is required",
     path: ["phoneNo"],
-  });
+  })
+  .refine(
+    (data) => {
+      // If role is customer and either vehicle field is provided,
+      // both vehicleBrand and vehicleModel must be present
+      const hasAnyVehicleField = [
+        data.vehicleBrand,
+        data.vehicleModel,
+        data.vehicleRegisterNo,
+      ].some(Boolean);
+
+      if (data.role === "customer" && hasAnyVehicleField) {
+        return data.vehicleBrand && data.vehicleModel;
+      }
+      return true;
+    },
+    {
+      message:
+        "vehicleBrand and vehicleModel are required when adding a vehicle",
+      path: ["vehicleBrand"],
+    },
+  );
 
 module.exports = {
   requestOtpSchema,

@@ -1,10 +1,5 @@
 const mongoose = require("mongoose");
-
-// ─────────────────────────────────────────────────────────────────
 //  User Schema
-//  Holds auth-level data only.  Garage business details live in the
-//  separate Garage model (see models/Garage.model.js).
-// ─────────────────────────────────────────────────────────────────
 const UserSchema = new mongoose.Schema(
   {
     // ── Identity ──────────────────────────────────────────────────
@@ -40,6 +35,11 @@ const UserSchema = new mongoose.Schema(
         message: "Invalid role",
       },
       default: "owner",
+    },
+    address: {
+      type: String,
+      trim: true,
+      default: null,
     },
     state: {
       type: String,

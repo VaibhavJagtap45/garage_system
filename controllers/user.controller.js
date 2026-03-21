@@ -2,7 +2,7 @@ const User = require("../models/User.model");
 const Garage = require("../models/Garage.model");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/response.utils");
-
+const Vehicle = require("../models/Vehicle.model");
 // ─────────────────────────────────────────────────────────────────
 //  GET PROFILE
 //  Route : GET /api/user/profile
@@ -25,16 +25,34 @@ const getProfile = asyncHandler(async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────
-//  ADD USER
-//  Route : POST /api/user/add-user
-//  Access: Protected — owner only
+// ADD USER -> Only owner can add users  -> role: customer → vehicle details can be added at the same time
+//  Route : POST /api/v1/user/add-user
 const addUser = asyncHandler(async (req, res) => {
   // ── 1. Gate: only owners may add users ─────────────────────────
   if (req.user.role !== "owner") {
     return sendError(res, 403, "Access denied. Only owners can add users.");
   }
 
-  const { phoneNo, emailId, fullName, role } = req.body;
+  const {
+    // User fields
+    phoneNo,
+    emailId,
+    fullName,
+    role,
+    address,
+    // Vehicle fields (customer only)
+    vehicleBrand,
+    vehicleModel,
+    vehicleRegisterNo,
+    vehiclePurchaseDate,
+    vehicleEngineNo,
+    vehicleVinNo,
+    vehicleInsuranceProvider,
+    vehiclePolicyNo,
+    vehicleInsuranceExpire,
+    vehicleRegCertificate,
+    vehicleInsuranceDoc,
+  } = req.body;
 
   // ── 2. Duplicate check ──────────────────────────────────────────
   const orConditions = [];
@@ -43,7 +61,6 @@ const addUser = asyncHandler(async (req, res) => {
 
   if (orConditions.length > 0) {
     const existing = await User.findOne({ $or: orConditions }).lean();
-
     if (existing) {
       const conflict =
         existing.phoneNo === phoneNo ? "phone number" : "email address";
@@ -55,17 +72,56 @@ const addUser = asyncHandler(async (req, res) => {
     }
   }
 
-  // ── 3. Create the new user ──────────────────────────────────────
-
+  // ── 3. Create user ──────────────────────────────────────────────
   const newUser = await User.create({
     phoneNo: phoneNo ?? null,
     emailId: emailId ? emailId.toLowerCase() : null,
     fullName: fullName ?? null,
-    role, // already validated by Zod (customer | member | vendor)
+    address: address ?? null,
+    role,
     isVerified: true,
   });
 
-  return sendSuccess(res, 201, "User added successfully", { user: newUser });
+  // ── 4. If customer — optionally create vehicle too ──────────────
+  let vehicle = null;
+
+  if (role === "customer" && vehicleBrand && vehicleModel) {
+    // Duplicate registration number check
+    if (vehicleRegisterNo) {
+      const existingVehicle = await Vehicle.findOne({
+        vehicleRegisterNo,
+      }).lean();
+      if (existingVehicle) {
+        // User is already created — rollback
+        await User.findByIdAndDelete(newUser._id);
+        return sendError(
+          res,
+          409,
+          "A vehicle with this registration number already exists. User was not saved.",
+        );
+      }
+    }
+
+    vehicle = await Vehicle.create({
+      user: newUser._id,
+      vehicleBrand,
+      vehicleModel,
+      vehicleRegisterNo,
+      vehiclePurchaseDate,
+      vehicleEngineNo,
+      vehicleVinNo,
+      vehicleInsuranceProvider,
+      vehiclePolicyNo,
+      vehicleInsuranceExpire,
+      vehicleRegCertificate,
+      vehicleInsuranceDoc,
+    });
+  }
+
+  return sendSuccess(res, 201, "User added successfully", {
+    user: newUser,
+    ...(vehicle && { vehicle }), // only included if vehicle was created
+  });
 });
 
 module.exports = { getProfile, addUser };

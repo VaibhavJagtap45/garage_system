@@ -6,10 +6,11 @@ const cors = require("cors");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
 const rateLimit = require("express-rate-limit");
-const UserRoutes = require("./routes/user.routes");
 const { connectDB } = require("./config/dbConnect");
 const AuthRoutes = require("./routes/auth.routes");
-
+const UserRoutes = require("./routes/user.routes");
+const VehicleRoutes = require("./routes/vehicle.routes");
+// const VehicleMetaRoutes = require("./routes/vehicleMeta.routes");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -45,6 +46,7 @@ app.get("/", (_req, res) =>
 const API_VERSION = process.env.BACKEND_VERSION ?? "v1";
 app.use(`/api/${API_VERSION}/auth`, AuthRoutes);
 app.use(`/api/${API_VERSION}/user`, UserRoutes);
+app.use(`/api/${API_VERSION}/vehicle`, VehicleRoutes);
 // ── 404 handler ────────────────────────────────────────────────────
 app.use((_req, res) =>
   res.status(404).json({ success: false, message: "Route not found." }),

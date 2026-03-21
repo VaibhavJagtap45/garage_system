@@ -1,18 +1,13 @@
 const mongoose = require("mongoose");
-
 // ─────────────────────────────────────────────────────────────────
 //  Garage Schema
-//  Lives separately from User so garage details don't pollute the
-//  auth document.  Linked back to User via `owner` (ObjectId ref).
-// ─────────────────────────────────────────────────────────────────
 const GarageSchema = new mongoose.Schema(
   {
-    // ── Relationship ──────────────────────────────────────────────
     owner: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      unique: true, // one garage per owner account
+      unique: true,
       index: true,
     },
 
