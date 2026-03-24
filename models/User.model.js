@@ -2,6 +2,12 @@ const mongoose = require("mongoose");
 //  User Schema
 const UserSchema = new mongoose.Schema(
   {
+    garage: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Garage",
+      default: null,
+      index: true,
+    },
     // ── Identity ──────────────────────────────────────────────────
     fullName: {
       type: String,

@@ -60,7 +60,7 @@ const garageProfileSchema = z
     garageContactNumber: z
       .string()
       .regex(/^[6-9]\d{9}$/, "Invalid contact number"),
-    garageType: z.enum(["twoWheeler", "fourWheeler"], {
+    garageType: z.enum(["twoWheeler", "fourWheeler", "both"], {
       errorMap: () => ({ message: "Must be twoWheeler or fourWheeler" }),
     }),
     garageLogo: optionalUrlField("Garage logo must be a valid URL"),
