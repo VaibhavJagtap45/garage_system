@@ -1,6 +1,6 @@
 const dotenv = require("dotenv");
 dotenv.config();
-
+require("dns").setDefaultResultOrder("ipv4first");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -9,7 +9,9 @@ const rateLimit = require("express-rate-limit");
 const { connectDB } = require("./config/dbConnect");
 const AuthRoutes = require("./routes/auth.routes");
 const UserRoutes = require("./routes/user.routes");
+const UserListRoutes = require("./routes/Userlist.routes");
 const VehicleRoutes = require("./routes/vehicle.routes");
+const ServicePartsCatalogRoutes = require("./routes/servicePartsCatalog.routes");
 // const VehicleMetaRoutes = require("./routes/vehicleMeta.routes");
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -47,6 +49,9 @@ const API_VERSION = process.env.BACKEND_VERSION ?? "v1";
 app.use(`/api/${API_VERSION}/auth`, AuthRoutes);
 app.use(`/api/${API_VERSION}/user`, UserRoutes);
 app.use(`/api/${API_VERSION}/vehicle`, VehicleRoutes);
+app.use(`/api/${API_VERSION}/catalog`, ServicePartsCatalogRoutes);
+app.use(`/api/${API_VERSION}`, UserListRoutes);
+
 // ── 404 handler ────────────────────────────────────────────────────
 app.use((_req, res) =>
   res.status(404).json({ success: false, message: "Route not found." }),
