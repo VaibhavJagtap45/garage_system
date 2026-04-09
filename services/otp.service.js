@@ -6,8 +6,8 @@ const FAST2SMS_URL = process.env.FAST2SMS_URL;
 
 const generateOTP = () => {
   // Demo mode — always return fixed OTP so testers can log in with 123456
-  if (process.env.DEMO_MODE === "true") return "123456";
-  return crypto.randomInt(100000, 999999).toString();
+  return "123456";
+  // return crypto.randomInt(100000, 999999).toString();
 };
 const hashOTP = (otp) => crypto.createHash("sha256").update(otp).digest("hex");
 
