@@ -4,11 +4,20 @@ const crypto = require("crypto");
 const OTP_EXPIRY_MINUTES = 5;
 const FAST2SMS_URL = process.env.FAST2SMS_URL;
 
-// const generateOTP = () => crypto.randomInt(100000, 999999).toString();
-const generateOTP = () => "123456";
+const generateOTP = () => {
+  // Demo mode — always return fixed OTP so testers can log in with 123456
+  if (process.env.DEMO_MODE === "true") return "123456";
+  return crypto.randomInt(100000, 999999).toString();
+};
 const hashOTP = (otp) => crypto.createHash("sha256").update(otp).digest("hex");
 
 const sendOTP = async (phoneNo, otp) => {
+  // Demo mode — skip SMS entirely, OTP is always 123456
+  if (process.env.DEMO_MODE === "true") {
+    console.log(`[DEMO] OTP for ${phoneNo}: ${otp}`);
+    return { return: true, message: "Demo mode — SMS skipped, use 123456" };
+  }
+
   const apiKey = process.env.FAST2SMS_API_KEY;
 
   if (!apiKey) throw new Error("FAST2SMS_API_KEY is not configured");
