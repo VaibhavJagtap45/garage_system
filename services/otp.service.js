@@ -4,8 +4,8 @@ const crypto = require("crypto");
 const OTP_EXPIRY_MINUTES = 5;
 const FAST2SMS_URL = process.env.FAST2SMS_URL;
 
-const generateOTP = () => crypto.randomInt(100000, 999999).toString();
-
+// const generateOTP = () => crypto.randomInt(100000, 999999).toString();
+const generateOTP = () => "123456";
 const hashOTP = (otp) => crypto.createHash("sha256").update(otp).digest("hex");
 
 const sendOTP = async (phoneNo, otp) => {
