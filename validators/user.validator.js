@@ -63,7 +63,15 @@ const garageProfileSchema = z
     garageType: z.enum(["twoWheeler", "fourWheeler", "both"], {
       errorMap: () => ({ message: "Must be twoWheeler or fourWheeler" }),
     }),
-    garageLogo: optionalUrlField("Garage logo must be a valid URL"),
+    garageLogo: z
+      .string()
+      .refine(
+        (v) => /^https?:\/\/.+/.test(v) || /^data:image\/.+;base64,/.test(v),
+        { message: "Garage logo must be a valid URL or base64 data image" },
+      )
+      .optional()
+      .or(z.literal(""))
+      .transform((v) => (v === "" ? undefined : v)),
 
     // ── GST — coerce FormData strings to boolean ───────────────
     isGstApplicable: z.preprocess((v) => {
@@ -170,6 +178,10 @@ const addUserSchema = z
       path: ["vehicleBrand"],
     },
   );
+
+// Add this BELOW the existing optionalUrlField helper:
+
+// Then in garageProfileSchema, change:
 
 module.exports = {
   requestOtpSchema,

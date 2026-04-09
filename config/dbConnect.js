@@ -16,6 +16,22 @@ const connectDB = async () => {
 
     console.log(`MongoDB Connected: ${connect.connection.host}`);
 
+    // ── Index reconciliation ────────────────────────────────────────────────
+    // The emailId_1 index may exist without sparse:true from an older schema.
+    // syncIndexes() alone may not detect option-only differences, so we
+    // explicitly drop the stale index first, then let Mongoose recreate it
+    // correctly as { unique: true, sparse: true }.
+    try {
+      const User = require("../models/User.model");
+      await User.collection.dropIndex("emailId_1").catch(() => {
+        // Index doesn't exist — nothing to drop, that's fine.
+      });
+      await User.syncIndexes();
+      console.log("User indexes synced.");
+    } catch (indexErr) {
+      console.warn("User index sync warning (non-fatal):", indexErr.message);
+    }
+
     mongoose.connection.on("disconnected", () =>
       console.warn("⚠️  MongoDB disconnected"),
     );

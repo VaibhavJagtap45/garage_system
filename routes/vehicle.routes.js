@@ -59,23 +59,7 @@ const {
 router.use(protect);
 
 // ─────────────────────────────────────────────────────────────────
-//  Vehicle CRUD routes
-// ─────────────────────────────────────────────────────────────────
-
-// POST /api/v1/vehicle/add  — add vehicle to existing customer
-router.post("/add", addVehicle);
-
-// GET /api/v1/vehicle/customer/:customerId — all vehicles of a customer + user info
-router.get("/customer/:customerId", getVehiclesByUser);
-
-// PUT /api/v1/vehicle/:vehicleId — update vehicle fields
-router.put("/:vehicleId", updateVehicle);
-
-// GET /api/v1/vehicle/:vehicleId — single vehicle with customer info populated
-router.get("/:vehicleId", getVehicleById);
-
-// ─────────────────────────────────────────────────────────────────
-//  Vehicle Meta routes (brands / models master list)
+//  Vehicle Meta routes — MUST be before /:vehicleId wildcard
 // ─────────────────────────────────────────────────────────────────
 
 // POST /api/v1/vehicle/brand  Body: { brand: "Honda", models: ["Activa", "Shine"] }
@@ -89,5 +73,21 @@ router.get("/brands", getMetaBrands);
 
 // GET /api/v1/vehicle/models?brand=Honda
 router.get("/models", getMetaModelsByBrand);
+
+// ─────────────────────────────────────────────────────────────────
+//  Vehicle CRUD routes — wildcard /:vehicleId must come last
+// ─────────────────────────────────────────────────────────────────
+
+// POST /api/v1/vehicle/add  — add vehicle to existing customer
+router.post("/add", addVehicle);
+
+// GET /api/v1/vehicle/customer/:customerId — all vehicles of a customer + user info
+router.get("/customer/:customerId", getVehiclesByUser);
+
+// PUT /api/v1/vehicle/:vehicleId — update vehicle fields
+router.put("/:vehicleId", updateVehicle);
+
+// GET /api/v1/vehicle/:vehicleId — single vehicle with customer info populated
+router.get("/:vehicleId", getVehicleById);
 
 module.exports = router;

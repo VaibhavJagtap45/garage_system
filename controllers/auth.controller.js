@@ -82,7 +82,8 @@ const verifyOTP = asyncHandler(async (req, res) => {
   return sendSuccess(res, 200, "Mobile verified successfully", {
     accessToken,
     isProfileComplete: garage?.isProfileComplete ?? false,
-    user,
+    user: verifiedUser,
+    garage: garage ?? null,
   });
 });
 
@@ -101,9 +102,6 @@ const resendOTP = asyncHandler(async (req, res) => {
       404,
       "No account found with this number. Request OTP first.",
     );
-
-  if (user.isVerified)
-    return sendError(res, 400, "This number is already verified.");
 
   // Enforce 60-second cooldown between resend requests
   if (user.otp?.expiresAt) {
@@ -203,6 +201,15 @@ const completeGarageProfile = asyncHandler(async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────
+//  GET /auth/garage  — return current user's garage
+// ─────────────────────────────────────────────────────────────────
+const getMyGarage = asyncHandler(async (req, res) => {
+  const garage = await Garage.findOne({ owner: req.user._id }).lean();
+  if (!garage) return sendError(res, 404, "Garage not found.");
+  return sendSuccess(res, 200, "Garage fetched.", { garage });
+});
+
+// ─────────────────────────────────────────────────────────────────
 //  Refresh Access Token
 // ─────────────────────────────────────────────────────────────────
 const refresh = asyncHandler(async (req, res) => {
@@ -235,6 +242,7 @@ module.exports = {
   verifyOTP,
   resendOTP,
   completeGarageProfile,
+  getMyGarage,
   refresh,
   logout,
 };

@@ -1,8 +1,447 @@
+// const XLSX = require("xlsx");
+// const GarageServiceCatalog = require("../models/GarageServiceCatalog.model");
+// const Inventory = require("../models/Inventry.model");
+// const asyncHandler = require("../utils/asyncHandler");
+// const { sendError, sendSuccess } = require("../utils/response.utils");
+
+// const normalizeText = (value) => (value ?? "").toString().trim();
+
+// const parseCsvList = (value) =>
+//   normalizeText(value)
+//     .split(",")
+//     .map((v) => normalizeText(v))
+//     .filter(Boolean);
+
+// const getGarageIdFromUser = (req) => req.user?.garage || req.body?.garageId;
+
+// const buildApplicabilityQuery = ({ brand, model }) => {
+//   const orConditions = [{ applicability: "generic" }];
+//   const specificAnd = [{ applicability: "specific" }];
+
+//   if (brand) {
+//     specificAnd.push({
+//       applicableBrands: { $elemMatch: { $regex: new RegExp(`^${brand}$`, "i") } },
+//     });
+//   }
+
+//   if (model) {
+//     specificAnd.push({
+//       applicableModels: { $elemMatch: { $regex: new RegExp(`^${model}$`, "i") } },
+//     });
+//   }
+
+//   if (specificAnd.length > 1) {
+//     orConditions.push({ $and: specificAnd });
+//   } else {
+//     orConditions.push({ applicability: "specific" });
+//   }
+
+//   return { $or: orConditions };
+// };
+
+// const buildInventoryApplicabilityQuery = ({ brand, model }) => {
+//   const orConditions = [{ applicability: "generic" }];
+//   const specificAnd = [{ applicability: "specific" }];
+
+//   if (brand) {
+//     specificAnd.push({
+//       applicableBrands: { $elemMatch: { $regex: new RegExp(`^${brand}$`, "i") } },
+//     });
+//   }
+
+//   if (model) {
+//     specificAnd.push({
+//       applicableModels: { $elemMatch: { $regex: new RegExp(`^${model}$`, "i") } },
+//     });
+//   }
+
+//   if (specificAnd.length > 1) {
+//     orConditions.push({ $and: specificAnd });
+//   } else {
+//     orConditions.push({ applicability: "specific" });
+//   }
+
+//   return { $or: orConditions };
+// };
+
+// const listCatalogItems = asyncHandler(async (req, res) => {
+//   const garageId = getGarageIdFromUser(req);
+//   if (!garageId) return sendError(res, 400, "garageId not found for current user.");
+
+//   const {
+//     itemType,
+//     search = "",
+//     category = "",
+//     brand = "",
+//     model = "",
+//     page = 1,
+//     limit = 100,
+//   } = req.query;
+
+//   if (!["service", "part"].includes(itemType)) {
+//     return sendError(res, 400, "itemType is required and must be service or part.");
+//   }
+
+//   if (itemType === "part") {
+//     const query = {
+//       garageId,
+//       isActive: true,
+//     };
+
+//     const andConditions = [
+//       buildInventoryApplicabilityQuery({
+//         brand: normalizeText(brand),
+//         model: normalizeText(model),
+//       }),
+//     ];
+
+//     if (normalizeText(search)) {
+//       const searchRegex = new RegExp(normalizeText(search), "i");
+//       andConditions.push({
+//         $or: [
+//           { partName: searchRegex },
+//           { partCode: searchRegex },
+//           { category: searchRegex },
+//           { brand: searchRegex },
+//           { manufacturer: searchRegex },
+//         ],
+//       });
+//     }
+
+//     if (normalizeText(category)) {
+//       query.category = new RegExp(`^${normalizeText(category)}$`, "i");
+//     }
+
+//     query.$and = andConditions;
+
+//     const safePage = Math.max(Number(page) || 1, 1);
+//     const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+//     const skip = (safePage - 1) * safeLimit;
+
+//     const [items, total] = await Promise.all([
+//       Inventory.find(query).sort({ createdAt: -1 }).skip(skip).limit(safeLimit).lean(),
+//       Inventory.countDocuments(query),
+//     ]);
+
+//     const mappedItems = items.map((item) => ({
+//       _id: item._id,
+//       itemType: "part",
+//       name: item.partName,
+//       no: item.partCode || "",
+//       category: item.category || "",
+//       manufacturer: item.manufacturer || item.brand || "",
+//       mrp: item.sellingPrice || 0,
+//       purchasePrice: item.purchasePrice || 0,
+//       stock: item.quantityInHand || 0,
+//       manageInventory: item.manageInventory ?? true,
+//       applicability: item.applicability || "generic",
+//       applicableBrands: item.applicableBrands || [],
+//       applicableModels: item.applicableModels || [],
+//       isActive: item.isActive,
+//       createdAt: item.createdAt,
+//       updatedAt: item.updatedAt,
+//     }));
+
+//     return sendSuccess(res, 200, "Catalog items fetched successfully.", {
+//       items: mappedItems,
+//       pagination: { page: safePage, limit: safeLimit, total },
+//     });
+//   }
+
+//   const query = {
+//     garageId,
+//     itemType,
+//     isActive: true,
+//   };
+
+//   const andConditions = [
+//     buildApplicabilityQuery({
+//       brand: normalizeText(brand),
+//       model: normalizeText(model),
+//     }),
+//   ];
+
+//   if (normalizeText(search)) {
+//     const searchRegex = new RegExp(normalizeText(search), "i");
+//     andConditions.push({
+//       $or: [
+//       { name: searchRegex },
+//       { no: searchRegex },
+//       { category: searchRegex },
+//       ],
+//     });
+//   }
+
+//   if (normalizeText(category)) {
+//     query.category = new RegExp(`^${normalizeText(category)}$`, "i");
+//   }
+
+//   if (andConditions.length) {
+//     query.$and = andConditions;
+//   }
+
+//   const safePage = Math.max(Number(page) || 1, 1);
+//   const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+//   const skip = (safePage - 1) * safeLimit;
+
+//   const [items, total] = await Promise.all([
+//     GarageServiceCatalog.find(query).sort({ createdAt: -1 }).skip(skip).limit(safeLimit).lean(),
+//     GarageServiceCatalog.countDocuments(query),
+//   ]);
+
+//   return sendSuccess(res, 200, "Catalog items fetched successfully.", {
+//     items,
+//     pagination: { page: safePage, limit: safeLimit, total },
+//   });
+// });
+
+// const createCatalogItem = asyncHandler(async (req, res) => {
+//   const garageId = getGarageIdFromUser(req);
+//   if (!garageId) return sendError(res, 400, "garageId not found for current user.");
+
+//   const {
+//     itemType,
+//     name,
+//     no = "",
+//     category = "",
+//     manufacturer = "",
+//     mrp = 0,
+//     purchasePrice = 0,
+//     stock = 0,
+//     manageInventory = false,
+//     applicability = "generic",
+//     applicableBrands = [],
+//     applicableModels = [],
+//   } = req.body;
+
+//   if (!["service", "part"].includes(itemType)) {
+//     return sendError(res, 400, "itemType must be service or part.");
+//   }
+//   if (!normalizeText(name)) return sendError(res, 400, "name is required.");
+
+//   if (itemType === "part") {
+//     const normalizedApplicability = applicability === "specific" ? "specific" : "generic";
+//     const normalizedBrands = (
+//       Array.isArray(applicableBrands) ? applicableBrands : parseCsvList(applicableBrands)
+//     )
+//       .map(normalizeText)
+//       .filter(Boolean);
+//     const normalizedModels = (
+//       Array.isArray(applicableModels) ? applicableModels : parseCsvList(applicableModels)
+//     )
+//       .map(normalizeText)
+//       .filter(Boolean);
+
+//     if (
+//       normalizedApplicability === "specific" &&
+//       normalizedBrands.length === 0 &&
+//       normalizedModels.length === 0
+//     ) {
+//       return sendError(
+//         res,
+//         400,
+//         "For specific applicability, provide at least one brand or model.",
+//       );
+//     }
+
+//     const inventoryItem = await Inventory.create({
+//       garageId,
+//       supplierId: req.user?._id || null,
+//       partName: normalizeText(name),
+//       partCode: normalizeText(no) || null,
+//       category: normalizeText(category) || "general",
+//       brand: normalizeText(manufacturer) || null,
+//       manufacturer: normalizeText(manufacturer) || null,
+//       quantityInHand: Number(stock) || 0,
+//       minimumStockLevel: 5,
+//       purchasePrice: Number(purchasePrice) || 0,
+//       sellingPrice: Number(mrp) || 0,
+//       manageInventory: Boolean(manageInventory),
+//       applicability: normalizedApplicability,
+//       applicableBrands: normalizedBrands,
+//       applicableModels: normalizedModels,
+//       isActive: true,
+//     });
+
+//     const mapped = {
+//       _id: inventoryItem._id,
+//       itemType: "part",
+//       name: inventoryItem.partName,
+//       no: inventoryItem.partCode || "",
+//       category: inventoryItem.category || "",
+//       manufacturer: inventoryItem.manufacturer || inventoryItem.brand || "",
+//       mrp: inventoryItem.sellingPrice || 0,
+//       purchasePrice: inventoryItem.purchasePrice || 0,
+//       stock: inventoryItem.quantityInHand || 0,
+//       manageInventory: inventoryItem.manageInventory ?? true,
+//       applicability: inventoryItem.applicability || "generic",
+//       applicableBrands: inventoryItem.applicableBrands || [],
+//       applicableModels: inventoryItem.applicableModels || [],
+//       isActive: inventoryItem.isActive,
+//       createdAt: inventoryItem.createdAt,
+//       updatedAt: inventoryItem.updatedAt,
+//     };
+
+//     return sendSuccess(res, 201, "Catalog item created successfully.", { item: mapped });
+//   }
+
+//   const payload = {
+//     garageId,
+//     createdBy: req.user?._id || null,
+//     itemType,
+//     name: normalizeText(name),
+//     no: normalizeText(no),
+//     category: normalizeText(category),
+//     manufacturer: normalizeText(manufacturer),
+//     mrp: Number(mrp) || 0,
+//     purchasePrice: Number(purchasePrice) || 0,
+//     stock: Number(stock) || 0,
+//     manageInventory: Boolean(manageInventory),
+//     applicability: applicability === "specific" ? "specific" : "generic",
+//     applicableBrands: (Array.isArray(applicableBrands) ? applicableBrands : parseCsvList(applicableBrands)).map(normalizeText).filter(Boolean),
+//     applicableModels: (Array.isArray(applicableModels) ? applicableModels : parseCsvList(applicableModels)).map(normalizeText).filter(Boolean),
+//   };
+
+//   if (payload.applicability === "specific") {
+//     const hasBrandOrModel = payload.applicableBrands.length || payload.applicableModels.length;
+//     if (!hasBrandOrModel) {
+//       return sendError(
+//         res,
+//         400,
+//         "For specific applicability, provide at least one brand or model.",
+//       );
+//     }
+//   }
+
+//   const item = await GarageServiceCatalog.create(payload);
+//   return sendSuccess(res, 201, "Catalog item created successfully.", { item });
+// });
+
+// const parseUploadRows = (req) => {
+//   if (!req.file?.buffer) return [];
+//   const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+//   const firstSheet = workbook.SheetNames[0];
+//   if (!firstSheet) return [];
+//   return XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: "" });
+// };
+
+// const bulkUploadCatalogItems = asyncHandler(async (req, res) => {
+//   const garageId = getGarageIdFromUser(req);
+//   if (!garageId) return sendError(res, 400, "garageId not found for current user.");
+
+//   const itemType = normalizeText(req.body?.itemType).toLowerCase();
+//   if (!["service", "part"].includes(itemType)) {
+//     return sendError(res, 400, "itemType must be service or part.");
+//   }
+//   if (!req.file) return sendError(res, 400, "Upload file is required.");
+
+//   const rows = parseUploadRows(req);
+//   if (!rows.length) return sendError(res, 400, "File has no rows.");
+
+//   const docs = [];
+//   const failedRows = [];
+
+//   rows.forEach((row, index) => {
+//     const name = normalizeText(row.name || row.serviceName || row.partName);
+//     if (!name) {
+//       failedRows.push({ row: index + 2, reason: "name/serviceName/partName is required" });
+//       return;
+//     }
+
+//     const applicabilityValue = normalizeText(row.applicability || "generic").toLowerCase();
+//     const applicability = applicabilityValue === "specific" ? "specific" : "generic";
+//     const applicableBrands = parseCsvList(row.applicableBrands || row.brands || "");
+//     const applicableModels = parseCsvList(row.applicableModels || row.models || "");
+
+//     if (
+//       applicability === "specific" &&
+//       applicableBrands.length === 0 &&
+//       applicableModels.length === 0
+//     ) {
+//       failedRows.push({
+//         row: index + 2,
+//         reason: "specific applicability requires applicableBrands or applicableModels",
+//       });
+//       return;
+//     }
+
+//     if (itemType === "part") {
+//       docs.push({
+//         garageId,
+//         supplierId: req.user?._id || null,
+//         partName: name,
+//         partCode: normalizeText(row.no || row.code || "") || null,
+//         category: normalizeText(row.category || "") || "general",
+//         brand: normalizeText(row.manufacturer || row.brand || "") || null,
+//         manufacturer: normalizeText(row.manufacturer || row.brand || "") || null,
+//         quantityInHand: Number(row.stock || 0) || 0,
+//         minimumStockLevel: Number(row.minimumStockLevel || 5) || 5,
+//         purchasePrice: Number(row.purchasePrice || 0) || 0,
+//         sellingPrice: Number(row.mrp || row.sellingPrice || 0) || 0,
+//         manageInventory: ["true", "1", "yes"].includes(
+//           normalizeText(row.manageInventory).toLowerCase(),
+//         ),
+//         applicability,
+//         applicableBrands,
+//         applicableModels,
+//         isActive: true,
+//       });
+//       return;
+//     }
+
+//     docs.push({
+//       garageId,
+//       createdBy: req.user?._id || null,
+//       itemType,
+//       name,
+//       no: normalizeText(row.no || row.code || ""),
+//       category: normalizeText(row.category || ""),
+//       manufacturer: normalizeText(row.manufacturer || ""),
+//       mrp: Number(row.mrp || 0) || 0,
+//       purchasePrice: Number(row.purchasePrice || 0) || 0,
+//       stock: Number(row.stock || 0) || 0,
+//       manageInventory: ["true", "1", "yes"].includes(
+//         normalizeText(row.manageInventory).toLowerCase(),
+//       ),
+//       applicability,
+//       applicableBrands,
+//       applicableModels,
+//     });
+//   });
+
+//   let insertedCount = 0;
+//   if (docs.length) {
+//     const inserted =
+//       itemType === "part"
+//         ? await Inventory.insertMany(docs, { ordered: false })
+//         : await GarageServiceCatalog.insertMany(docs, { ordered: false });
+//     insertedCount = inserted.length;
+//   }
+
+//   return sendSuccess(res, 200, "Bulk upload completed.", {
+//     totalRows: rows.length,
+//     insertedCount,
+//     failedCount: failedRows.length,
+//     failedRows,
+//   });
+// });
+
+// module.exports = {
+//   listCatalogItems,
+//   createCatalogItem,
+//   bulkUploadCatalogItems,
+// };
+
 const XLSX = require("xlsx");
 const GarageServiceCatalog = require("../models/GarageServiceCatalog.model");
 const Inventory = require("../models/Inventry.model");
+const Garage = require("../models/Garage.model");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendError, sendSuccess } = require("../utils/response.utils");
+
+// ─────────────────────────────────────────────────────────────────
+//  Helpers
+// ─────────────────────────────────────────────────────────────────
 
 const normalizeText = (value) => (value ?? "").toString().trim();
 
@@ -12,7 +451,20 @@ const parseCsvList = (value) =>
     .map((v) => normalizeText(v))
     .filter(Boolean);
 
-const getGarageIdFromUser = (req) => req.user?.garage || req.body?.garageId;
+/**
+ * Resolve garageId for any role:
+ * - owner  → garage where Garage.owner === user._id
+ * - member/vendor → user.garage (already stamped on the user doc)
+ */
+const resolveGarageId = async (user) => {
+  if (user.role === "owner") {
+    const garage = await Garage.findOne({ owner: user._id })
+      .select("_id")
+      .lean();
+    return garage?._id ?? null;
+  }
+  return user.garage ?? null;
+};
 
 const buildApplicabilityQuery = ({ brand, model }) => {
   const orConditions = [{ applicability: "generic" }];
@@ -20,13 +472,16 @@ const buildApplicabilityQuery = ({ brand, model }) => {
 
   if (brand) {
     specificAnd.push({
-      applicableBrands: { $elemMatch: { $regex: new RegExp(`^${brand}$`, "i") } },
+      applicableBrands: {
+        $elemMatch: { $regex: new RegExp(`^${brand}$`, "i") },
+      },
     });
   }
-
   if (model) {
     specificAnd.push({
-      applicableModels: { $elemMatch: { $regex: new RegExp(`^${model}$`, "i") } },
+      applicableModels: {
+        $elemMatch: { $regex: new RegExp(`^${model}$`, "i") },
+      },
     });
   }
 
@@ -39,34 +494,55 @@ const buildApplicabilityQuery = ({ brand, model }) => {
   return { $or: orConditions };
 };
 
-const buildInventoryApplicabilityQuery = ({ brand, model }) => {
-  const orConditions = [{ applicability: "generic" }];
-  const specificAnd = [{ applicability: "specific" }];
+// Normalize a raw GarageServiceCatalog doc to a consistent shape for the frontend
+const mapServiceItem = (item) => ({
+  _id: item._id,
+  itemType: "service",
+  name: item.name,
+  no: item.serviceNo || "",        // frontend uses "no" consistently
+  serviceNo: item.serviceNo || "",
+  category: item.category || "",
+  mrp: item.mrp || 0,
+  applicability: item.applicability || "generic",
+  applicableBrands: item.applicableBrands || [],
+  applicableModels: item.applicableModels || [],
+  isActive: item.isActive ?? true,
+  createdAt: item.createdAt,
+  updatedAt: item.updatedAt,
+});
 
-  if (brand) {
-    specificAnd.push({
-      applicableBrands: { $elemMatch: { $regex: new RegExp(`^${brand}$`, "i") } },
-    });
-  }
+// Normalize a raw Inventory doc to a consistent shape for the frontend
+const mapInventoryItem = (item) => ({
+  _id: item._id,
+  itemType: "part",
+  name: item.partName,
+  no: item.partCode || "",
+  category: item.category || "",
+  manufacturer: item.manufacturer || item.brand || "",
+  mrp: item.sellingPrice || 0,
+  purchasePrice: item.purchasePrice || 0,
+  stock: item.quantityInHand || 0,
+  minimumStockLevel: item.minimumStockLevel ?? 5,
+  manageInventory: item.manageInventory ?? true,
+  unit: item.unit || "pcs",
+  description: item.description || "",
+  taxPercent: item.taxPercent || 0,
+  applicability: item.applicability || "generic",
+  applicableBrands: item.applicableBrands || [],
+  applicableModels: item.applicableModels || [],
+  isActive: item.isActive,
+  createdAt: item.createdAt,
+  updatedAt: item.updatedAt,
+});
 
-  if (model) {
-    specificAnd.push({
-      applicableModels: { $elemMatch: { $regex: new RegExp(`^${model}$`, "i") } },
-    });
-  }
-
-  if (specificAnd.length > 1) {
-    orConditions.push({ $and: specificAnd });
-  } else {
-    orConditions.push({ applicability: "specific" });
-  }
-
-  return { $or: orConditions };
-};
-
+// ─────────────────────────────────────────────────────────────────
+//  GET /api/v1/catalog?itemType=service|part
+//      &search=&category=&brand=&model=&page=1&limit=100
+// ─────────────────────────────────────────────────────────────────
 const listCatalogItems = asyncHandler(async (req, res) => {
-  const garageId = getGarageIdFromUser(req);
-  if (!garageId) return sendError(res, 400, "garageId not found for current user.");
+  const garageId = await resolveGarageId(req.user);
+  if (!garageId)
+    return sendError(res, 404, "Garage not found for this account.");
 
   const {
     itemType,
@@ -79,31 +555,36 @@ const listCatalogItems = asyncHandler(async (req, res) => {
   } = req.query;
 
   if (!["service", "part"].includes(itemType)) {
-    return sendError(res, 400, "itemType is required and must be service or part.");
+    return sendError(
+      res,
+      400,
+      "itemType is required and must be 'service' or 'part'.",
+    );
   }
 
-  if (itemType === "part") {
-    const query = {
-      garageId,
-      isActive: true,
-    };
+  const safePage = Math.max(Number(page) || 1, 1);
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const skip = (safePage - 1) * safeLimit;
 
+  // ── PARTS ───────────────────────────────────────────────────────
+  if (itemType === "part") {
+    const query = { garageId, isActive: true };
     const andConditions = [
-      buildInventoryApplicabilityQuery({
+      buildApplicabilityQuery({
         brand: normalizeText(brand),
         model: normalizeText(model),
       }),
     ];
 
     if (normalizeText(search)) {
-      const searchRegex = new RegExp(normalizeText(search), "i");
+      const rx = new RegExp(normalizeText(search), "i");
       andConditions.push({
         $or: [
-          { partName: searchRegex },
-          { partCode: searchRegex },
-          { category: searchRegex },
-          { brand: searchRegex },
-          { manufacturer: searchRegex },
+          { partName: rx },
+          { partCode: rx },
+          { category: rx },
+          { brand: rx },
+          { manufacturer: rx },
         ],
       });
     }
@@ -114,46 +595,23 @@ const listCatalogItems = asyncHandler(async (req, res) => {
 
     query.$and = andConditions;
 
-    const safePage = Math.max(Number(page) || 1, 1);
-    const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
-    const skip = (safePage - 1) * safeLimit;
-
     const [items, total] = await Promise.all([
-      Inventory.find(query).sort({ createdAt: -1 }).skip(skip).limit(safeLimit).lean(),
+      Inventory.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(safeLimit)
+        .lean(),
       Inventory.countDocuments(query),
     ]);
 
-    const mappedItems = items.map((item) => ({
-      _id: item._id,
-      itemType: "part",
-      name: item.partName,
-      no: item.partCode || "",
-      category: item.category || "",
-      manufacturer: item.manufacturer || item.brand || "",
-      mrp: item.sellingPrice || 0,
-      purchasePrice: item.purchasePrice || 0,
-      stock: item.quantityInHand || 0,
-      manageInventory: item.manageInventory ?? true,
-      applicability: item.applicability || "generic",
-      applicableBrands: item.applicableBrands || [],
-      applicableModels: item.applicableModels || [],
-      isActive: item.isActive,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-    }));
-
-    return sendSuccess(res, 200, "Catalog items fetched successfully.", {
-      items: mappedItems,
+    return sendSuccess(res, 200, "Parts fetched successfully.", {
+      items: items.map(mapInventoryItem),
       pagination: { page: safePage, limit: safeLimit, total },
     });
   }
 
-  const query = {
-    garageId,
-    itemType,
-    isActive: true,
-  };
-
+  // ── SERVICES ────────────────────────────────────────────────────
+  const query = { garageId, isDeleted: false };
   const andConditions = [
     buildApplicabilityQuery({
       brand: normalizeText(brand),
@@ -162,13 +620,9 @@ const listCatalogItems = asyncHandler(async (req, res) => {
   ];
 
   if (normalizeText(search)) {
-    const searchRegex = new RegExp(normalizeText(search), "i");
+    const rx = new RegExp(normalizeText(search), "i");
     andConditions.push({
-      $or: [
-      { name: searchRegex },
-      { no: searchRegex },
-      { category: searchRegex },
-      ],
+      $or: [{ name: rx }, { serviceNo: rx }, { category: rx }],
     });
   }
 
@@ -176,28 +630,60 @@ const listCatalogItems = asyncHandler(async (req, res) => {
     query.category = new RegExp(`^${normalizeText(category)}$`, "i");
   }
 
-  if (andConditions.length) {
-    query.$and = andConditions;
-  }
-
-  const safePage = Math.max(Number(page) || 1, 1);
-  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
-  const skip = (safePage - 1) * safeLimit;
+  query.$and = andConditions;
 
   const [items, total] = await Promise.all([
-    GarageServiceCatalog.find(query).sort({ createdAt: -1 }).skip(skip).limit(safeLimit).lean(),
+    GarageServiceCatalog.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .lean(),
     GarageServiceCatalog.countDocuments(query),
   ]);
 
-  return sendSuccess(res, 200, "Catalog items fetched successfully.", {
-    items,
+  return sendSuccess(res, 200, "Services fetched successfully.", {
+    items: items.map(mapServiceItem),
     pagination: { page: safePage, limit: safeLimit, total },
   });
 });
 
+// ─────────────────────────────────────────────────────────────────
+//  GET /api/v1/catalog/categories?itemType=service|part
+// ─────────────────────────────────────────────────────────────────
+const listCategories = asyncHandler(async (req, res) => {
+  const garageId = await resolveGarageId(req.user);
+  if (!garageId) return sendSuccess(res, 200, "OK", { categories: [] });
+
+  const { itemType } = req.query;
+
+  let categories = [];
+  if (itemType === "part") {
+    categories = await Inventory.distinct("category", {
+      garageId,
+      isActive: true,
+    });
+  } else {
+    categories = await GarageServiceCatalog.distinct("category", {
+      garageId,
+      isDeleted: false,
+    });
+  }
+
+  return sendSuccess(res, 200, "Categories fetched.", {
+    categories: categories.filter(Boolean).sort(),
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+//  POST /api/v1/catalog
+//  Body: { itemType, name, no, category, mrp, purchasePrice, stock,
+//          manufacturer, unit, description, taxPercent, manageInventory,
+//          minimumStockLevel, applicability, applicableBrands, applicableModels }
+// ─────────────────────────────────────────────────────────────────
 const createCatalogItem = asyncHandler(async (req, res) => {
-  const garageId = getGarageIdFromUser(req);
-  if (!garageId) return sendError(res, 400, "garageId not found for current user.");
+  const garageId = await resolveGarageId(req.user);
+  if (!garageId)
+    return sendError(res, 404, "Garage not found for this account.");
 
   const {
     itemType,
@@ -205,57 +691,56 @@ const createCatalogItem = asyncHandler(async (req, res) => {
     no = "",
     category = "",
     manufacturer = "",
+    unit = "pcs",
+    description = "",
     mrp = 0,
     purchasePrice = 0,
     stock = 0,
+    minimumStockLevel = 5,
+    taxPercent = 0,
     manageInventory = false,
     applicability = "generic",
     applicableBrands = [],
     applicableModels = [],
   } = req.body;
 
-  if (!["service", "part"].includes(itemType)) {
-    return sendError(res, 400, "itemType must be service or part.");
-  }
+  if (!["service", "part"].includes(itemType))
+    return sendError(res, 400, "itemType must be 'service' or 'part'.");
   if (!normalizeText(name)) return sendError(res, 400, "name is required.");
 
+  const normalizedApplicability =
+    applicability === "specific" ? "specific" : "generic";
+  const normalizedBrands = (
+    Array.isArray(applicableBrands)
+      ? applicableBrands
+      : parseCsvList(applicableBrands)
+  )
+    .map(normalizeText)
+    .filter(Boolean);
+  const normalizedModels = (
+    Array.isArray(applicableModels)
+      ? applicableModels
+      : parseCsvList(applicableModels)
+  )
+    .map(normalizeText)
+    .filter(Boolean);
+
+  // ── PART ──────────────────────────────────────────────────────
   if (itemType === "part") {
-    const normalizedApplicability = applicability === "specific" ? "specific" : "generic";
-    const normalizedBrands = (
-      Array.isArray(applicableBrands) ? applicableBrands : parseCsvList(applicableBrands)
-    )
-      .map(normalizeText)
-      .filter(Boolean);
-    const normalizedModels = (
-      Array.isArray(applicableModels) ? applicableModels : parseCsvList(applicableModels)
-    )
-      .map(normalizeText)
-      .filter(Boolean);
-
-    if (
-      normalizedApplicability === "specific" &&
-      normalizedBrands.length === 0 &&
-      normalizedModels.length === 0
-    ) {
-      return sendError(
-        res,
-        400,
-        "For specific applicability, provide at least one brand or model.",
-      );
-    }
-
     const inventoryItem = await Inventory.create({
       garageId,
-      supplierId: req.user?._id || null,
       partName: normalizeText(name),
       partCode: normalizeText(no) || null,
       category: normalizeText(category) || "general",
       brand: normalizeText(manufacturer) || null,
       manufacturer: normalizeText(manufacturer) || null,
+      unit: normalizeText(unit) || "pcs",
+      description: normalizeText(description) || null,
       quantityInHand: Number(stock) || 0,
-      minimumStockLevel: 5,
+      minimumStockLevel: Number(minimumStockLevel) || 5,
       purchasePrice: Number(purchasePrice) || 0,
       sellingPrice: Number(mrp) || 0,
+      taxPercent: Number(taxPercent) || 0,
       manageInventory: Boolean(manageInventory),
       applicability: normalizedApplicability,
       applicableBrands: normalizedBrands,
@@ -263,104 +748,289 @@ const createCatalogItem = asyncHandler(async (req, res) => {
       isActive: true,
     });
 
-    const mapped = {
-      _id: inventoryItem._id,
-      itemType: "part",
-      name: inventoryItem.partName,
-      no: inventoryItem.partCode || "",
-      category: inventoryItem.category || "",
-      manufacturer: inventoryItem.manufacturer || inventoryItem.brand || "",
-      mrp: inventoryItem.sellingPrice || 0,
-      purchasePrice: inventoryItem.purchasePrice || 0,
-      stock: inventoryItem.quantityInHand || 0,
-      manageInventory: inventoryItem.manageInventory ?? true,
-      applicability: inventoryItem.applicability || "generic",
-      applicableBrands: inventoryItem.applicableBrands || [],
-      applicableModels: inventoryItem.applicableModels || [],
-      isActive: inventoryItem.isActive,
-      createdAt: inventoryItem.createdAt,
-      updatedAt: inventoryItem.updatedAt,
-    };
-
-    return sendSuccess(res, 201, "Catalog item created successfully.", { item: mapped });
+    return sendSuccess(res, 201, "Part created successfully.", {
+      item: mapInventoryItem(inventoryItem.toObject()),
+    });
   }
 
-  const payload = {
+  // ── SERVICE ───────────────────────────────────────────────────
+  // Auto-generate serviceNo if not provided
+  // Use max-based generation (immune to soft-deletes and race conditions).
+  let serviceNo = normalizeText(no) || null;
+  if (!serviceNo) {
+    const existing = await GarageServiceCatalog.find(
+      { garageId, serviceNo: { $regex: /^S\d+$/ } },
+      { serviceNo: 1 },
+    ).lean();
+    const maxNum = existing.reduce((max, doc) => {
+      const n = parseInt(doc.serviceNo.slice(1), 10);
+      return Number.isNaN(n) ? max : Math.max(max, n);
+    }, 0);
+    serviceNo = `S${String(maxNum + 1).padStart(3, "0")}`;
+  }
+
+  const service = await GarageServiceCatalog.create({
     garageId,
-    createdBy: req.user?._id || null,
-    itemType,
     name: normalizeText(name),
-    no: normalizeText(no),
-    category: normalizeText(category),
-    manufacturer: normalizeText(manufacturer),
+    serviceNo,
+    category: normalizeText(category) || "Other",
     mrp: Number(mrp) || 0,
-    purchasePrice: Number(purchasePrice) || 0,
-    stock: Number(stock) || 0,
-    manageInventory: Boolean(manageInventory),
-    applicability: applicability === "specific" ? "specific" : "generic",
-    applicableBrands: (Array.isArray(applicableBrands) ? applicableBrands : parseCsvList(applicableBrands)).map(normalizeText).filter(Boolean),
-    applicableModels: (Array.isArray(applicableModels) ? applicableModels : parseCsvList(applicableModels)).map(normalizeText).filter(Boolean),
-  };
+    applicability: normalizedApplicability,
+    applicableBrands: normalizedBrands,
+    applicableModels: normalizedModels,
+  });
 
-  if (payload.applicability === "specific") {
-    const hasBrandOrModel = payload.applicableBrands.length || payload.applicableModels.length;
-    if (!hasBrandOrModel) {
-      return sendError(
-        res,
-        400,
-        "For specific applicability, provide at least one brand or model.",
-      );
-    }
-  }
-
-  const item = await GarageServiceCatalog.create(payload);
-  return sendSuccess(res, 201, "Catalog item created successfully.", { item });
+  return sendSuccess(res, 201, "Service created successfully.", {
+    item: mapServiceItem(service.toObject()),
+  });
 });
 
-const parseUploadRows = (req) => {
-  if (!req.file?.buffer) return [];
-  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-  const firstSheet = workbook.SheetNames[0];
-  if (!firstSheet) return [];
-  return XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: "" });
-};
+// ─────────────────────────────────────────────────────────────────
+//  PUT /api/v1/catalog/:id?itemType=service|part
+// ─────────────────────────────────────────────────────────────────
+const updateCatalogItem = asyncHandler(async (req, res) => {
+  const garageId = await resolveGarageId(req.user);
+  if (!garageId)
+    return sendError(res, 404, "Garage not found for this account.");
 
-const bulkUploadCatalogItems = asyncHandler(async (req, res) => {
-  const garageId = getGarageIdFromUser(req);
-  if (!garageId) return sendError(res, 400, "garageId not found for current user.");
+  const { itemType } = req.query;
+  if (!["service", "part"].includes(itemType))
+    return sendError(res, 400, "itemType must be 'service' or 'part'.");
 
-  const itemType = normalizeText(req.body?.itemType).toLowerCase();
-  if (!["service", "part"].includes(itemType)) {
-    return sendError(res, 400, "itemType must be service or part.");
+  if (itemType === "part") {
+    const {
+      name,
+      no,
+      category,
+      manufacturer,
+      unit,
+      description,
+      mrp,
+      purchasePrice,
+      stock,
+      minimumStockLevel,
+      taxPercent,
+      manageInventory,
+      applicability,
+      applicableBrands,
+      applicableModels,
+    } = req.body;
+
+    const update = {};
+    if (name !== undefined) update.partName = normalizeText(name);
+    if (no !== undefined) update.partCode = normalizeText(no) || null;
+    if (category !== undefined) update.category = normalizeText(category);
+    if (manufacturer !== undefined) {
+      update.manufacturer = normalizeText(manufacturer) || null;
+      update.brand = normalizeText(manufacturer) || null;
+    }
+    if (unit !== undefined) update.unit = normalizeText(unit);
+    if (description !== undefined)
+      update.description = normalizeText(description);
+    if (mrp !== undefined) update.sellingPrice = Number(mrp) || 0;
+    if (purchasePrice !== undefined)
+      update.purchasePrice = Number(purchasePrice) || 0;
+    if (stock !== undefined) update.quantityInHand = Number(stock) || 0;
+    if (minimumStockLevel !== undefined)
+      update.minimumStockLevel = Number(minimumStockLevel) || 5;
+    if (taxPercent !== undefined) update.taxPercent = Number(taxPercent) || 0;
+    if (manageInventory !== undefined)
+      update.manageInventory = Boolean(manageInventory);
+    if (applicability !== undefined)
+      update.applicability =
+        applicability === "specific" ? "specific" : "generic";
+    if (applicableBrands !== undefined)
+      update.applicableBrands = (
+        Array.isArray(applicableBrands)
+          ? applicableBrands
+          : parseCsvList(applicableBrands)
+      )
+        .map(normalizeText)
+        .filter(Boolean);
+    if (applicableModels !== undefined)
+      update.applicableModels = (
+        Array.isArray(applicableModels)
+          ? applicableModels
+          : parseCsvList(applicableModels)
+      )
+        .map(normalizeText)
+        .filter(Boolean);
+
+    const item = await Inventory.findOneAndUpdate(
+      { _id: req.params.id, garageId, isActive: true },
+      { $set: update },
+      { new: true, runValidators: true },
+    ).lean();
+
+    if (!item) return sendError(res, 404, "Part not found.");
+
+    return sendSuccess(res, 200, "Part updated successfully.", {
+      item: mapInventoryItem(item),
+    });
   }
+
+  // SERVICE update
+  const {
+    name,
+    no,
+    category,
+    mrp,
+    applicability,
+    applicableBrands,
+    applicableModels,
+  } = req.body;
+
+  const update = {};
+  if (name !== undefined) update.name = normalizeText(name);
+  if (no !== undefined) update.serviceNo = normalizeText(no) || null;
+  if (category !== undefined) update.category = normalizeText(category);
+  if (mrp !== undefined) update.mrp = Number(mrp) || 0;
+  if (applicability !== undefined)
+    update.applicability =
+      applicability === "specific" ? "specific" : "generic";
+  if (applicableBrands !== undefined)
+    update.applicableBrands = (
+      Array.isArray(applicableBrands)
+        ? applicableBrands
+        : parseCsvList(applicableBrands)
+    )
+      .map(normalizeText)
+      .filter(Boolean);
+  if (applicableModels !== undefined)
+    update.applicableModels = (
+      Array.isArray(applicableModels)
+        ? applicableModels
+        : parseCsvList(applicableModels)
+    )
+      .map(normalizeText)
+      .filter(Boolean);
+
+  const item = await GarageServiceCatalog.findOneAndUpdate(
+    { _id: req.params.id, garageId, isDeleted: false },
+    { $set: update },
+    { new: true, runValidators: true },
+  ).lean();
+
+  if (!item) return sendError(res, 404, "Service not found.");
+
+  return sendSuccess(res, 200, "Service updated successfully.", {
+    item: mapServiceItem(item),
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+//  DELETE /api/v1/catalog/:id?itemType=service|part  (soft delete)
+// ─────────────────────────────────────────────────────────────────
+const deleteCatalogItem = asyncHandler(async (req, res) => {
+  const garageId = await resolveGarageId(req.user);
+  if (!garageId)
+    return sendError(res, 404, "Garage not found for this account.");
+
+  const { itemType } = req.query;
+  if (!["service", "part"].includes(itemType))
+    return sendError(res, 400, "itemType must be 'service' or 'part'.");
+
+  if (itemType === "part") {
+    const item = await Inventory.findOneAndUpdate(
+      { _id: req.params.id, garageId },
+      { isActive: false },
+      { new: true },
+    );
+    if (!item) return sendError(res, 404, "Part not found.");
+    return sendSuccess(res, 200, "Part deleted successfully.");
+  }
+
+  const item = await GarageServiceCatalog.findOneAndUpdate(
+    { _id: req.params.id, garageId, isDeleted: false },
+    { isDeleted: true },
+    { new: true },
+  );
+  if (!item) return sendError(res, 404, "Service not found.");
+  return sendSuccess(res, 200, "Service deleted successfully.");
+});
+
+// ─────────────────────────────────────────────────────────────────
+//  POST /api/v1/catalog/bulk-upload?itemType=service|part
+//  Accepts Excel (.xlsx) or CSV — column names are flexible
+//
+//  SERVICE columns: name*, no/service_no, category, mrp, applicability,
+//                   applicableBrands/brands, applicableModels/models
+//  PART columns:    name/partName*, no/code/partCode, category, mrp/sellingPrice,
+//                   purchasePrice, stock, manufacturer/brand, unit,
+//                   minimumStockLevel, manageInventory,
+//                   applicability, applicableBrands/brands, applicableModels/models
+// ─────────────────────────────────────────────────────────────────
+const bulkUploadCatalogItems = asyncHandler(async (req, res) => {
+  const garageId = await resolveGarageId(req.user);
+  if (!garageId)
+    return sendError(res, 404, "Garage not found for this account.");
+
+  const itemType = normalizeText(
+    req.body?.itemType || req.query?.itemType,
+  ).toLowerCase();
+  if (!["service", "part"].includes(itemType))
+    return sendError(res, 400, "itemType must be 'service' or 'part'.");
+
   if (!req.file) return sendError(res, 400, "Upload file is required.");
 
-  const rows = parseUploadRows(req);
-  if (!rows.length) return sendError(res, 400, "File has no rows.");
+  // Parse file — supports both XLSX and CSV
+  let rows = [];
+  try {
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const firstSheet = workbook.SheetNames[0];
+    if (!firstSheet) return sendError(res, 400, "File has no sheets.");
+    rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], {
+      defval: "",
+      raw: false,
+    });
+  } catch (e) {
+    return sendError(res, 400, `Could not parse file: ${e.message}`);
+  }
+
+  if (!rows.length) return sendError(res, 400, "File has no data rows.");
 
   const docs = [];
   const failedRows = [];
 
-  rows.forEach((row, index) => {
-    const name = normalizeText(row.name || row.serviceName || row.partName);
+  rows.forEach((rawRow, index) => {
+    // Normalize keys: lowercase + trim
+    const row = {};
+    Object.keys(rawRow).forEach((k) => {
+      row[k.toLowerCase().trim().replace(/\s+/g, "_")] = normalizeText(
+        rawRow[k],
+      );
+    });
+
+    const name =
+      row.name ||
+      row.servicename ||
+      row.partname ||
+      row.service_name ||
+      row.part_name;
     if (!name) {
-      failedRows.push({ row: index + 2, reason: "name/serviceName/partName is required" });
+      failedRows.push({ row: index + 2, reason: "name is required" });
       return;
     }
 
-    const applicabilityValue = normalizeText(row.applicability || "generic").toLowerCase();
-    const applicability = applicabilityValue === "specific" ? "specific" : "generic";
-    const applicableBrands = parseCsvList(row.applicableBrands || row.brands || "");
-    const applicableModels = parseCsvList(row.applicableModels || row.models || "");
+    const applicability =
+      (row.applicability || "generic").toLowerCase() === "specific"
+        ? "specific"
+        : "generic";
+    const applicableBrands = parseCsvList(
+      row.applicablebrands || row.applicable_brands || row.brands || "",
+    );
+    const applicableModels = parseCsvList(
+      row.applicablemodels || row.applicable_models || row.models || "",
+    );
 
     if (
       applicability === "specific" &&
-      applicableBrands.length === 0 &&
-      applicableModels.length === 0
+      !applicableBrands.length &&
+      !applicableModels.length
     ) {
       failedRows.push({
         row: index + 2,
-        reason: "specific applicability requires applicableBrands or applicableModels",
+        reason: "specific applicability needs brands or models",
       });
       return;
     }
@@ -368,45 +1038,41 @@ const bulkUploadCatalogItems = asyncHandler(async (req, res) => {
     if (itemType === "part") {
       docs.push({
         garageId,
-        supplierId: req.user?._id || null,
         partName: name,
-        partCode: normalizeText(row.no || row.code || "") || null,
-        category: normalizeText(row.category || "") || "general",
-        brand: normalizeText(row.manufacturer || row.brand || "") || null,
-        manufacturer: normalizeText(row.manufacturer || row.brand || "") || null,
+        partCode: row.no || row.code || row.partcode || row.part_code || null,
+        category: row.category || "general",
+        brand: row.manufacturer || row.brand || null,
+        manufacturer: row.manufacturer || row.brand || null,
+        unit: row.unit || "pcs",
+        description: row.description || null,
         quantityInHand: Number(row.stock || 0) || 0,
-        minimumStockLevel: Number(row.minimumStockLevel || 5) || 5,
-        purchasePrice: Number(row.purchasePrice || 0) || 0,
-        sellingPrice: Number(row.mrp || row.sellingPrice || 0) || 0,
+        minimumStockLevel:
+          Number(row.minimumstocklevel || row.minimum_stock_level || 5) || 5,
+        purchasePrice:
+          Number(row.purchaseprice || row.purchase_price || 0) || 0,
+        sellingPrice:
+          Number(row.mrp || row.sellingprice || row.selling_price || 0) || 0,
+        taxPercent: Number(row.taxpercent || row.tax_percent || 0) || 0,
         manageInventory: ["true", "1", "yes"].includes(
-          normalizeText(row.manageInventory).toLowerCase(),
+          (row.manageinventory || row.manage_inventory || "").toLowerCase(),
         ),
         applicability,
         applicableBrands,
         applicableModels,
         isActive: true,
       });
-      return;
+    } else {
+      docs.push({
+        garageId,
+        name,
+        serviceNo: row.no || row.service_no || row.serviceno || null,
+        category: row.category || "Other",
+        mrp: Number(row.mrp || row.price || 0) || 0,
+        applicability,
+        applicableBrands,
+        applicableModels,
+      });
     }
-
-    docs.push({
-      garageId,
-      createdBy: req.user?._id || null,
-      itemType,
-      name,
-      no: normalizeText(row.no || row.code || ""),
-      category: normalizeText(row.category || ""),
-      manufacturer: normalizeText(row.manufacturer || ""),
-      mrp: Number(row.mrp || 0) || 0,
-      purchasePrice: Number(row.purchasePrice || 0) || 0,
-      stock: Number(row.stock || 0) || 0,
-      manageInventory: ["true", "1", "yes"].includes(
-        normalizeText(row.manageInventory).toLowerCase(),
-      ),
-      applicability,
-      applicableBrands,
-      applicableModels,
-    });
   });
 
   let insertedCount = 0;
@@ -420,14 +1086,42 @@ const bulkUploadCatalogItems = asyncHandler(async (req, res) => {
 
   return sendSuccess(res, 200, "Bulk upload completed.", {
     totalRows: rows.length,
-    insertedCount,
-    failedCount: failedRows.length,
+    inserted: insertedCount,
+    skipped: failedRows.length,
     failedRows,
+  });
+});
+
+// GET /api/v1/catalog/inventory-stats
+const getInventoryStats = asyncHandler(async (req, res) => {
+  const garageId = await resolveGarageId(req.user);
+  if (!garageId) return sendError(res, 404, "Garage not found.");
+
+  const [result] = await Inventory.aggregate([
+    { $match: { garageId, isActive: true } },
+    {
+      $group: {
+        _id:             null,
+        totalParts:      { $sum: 1 },
+        totalStock:      { $sum: "$quantityInHand" },
+        totalStockValue: { $sum: { $multiply: ["$quantityInHand", "$purchasePrice"] } },
+      },
+    },
+  ]);
+
+  return sendSuccess(res, 200, "Inventory stats fetched.", {
+    totalParts:      result?.totalParts      ?? 0,
+    totalStock:      result?.totalStock      ?? 0,
+    totalStockValue: result?.totalStockValue ?? 0,
   });
 });
 
 module.exports = {
   listCatalogItems,
+  listCategories,
   createCatalogItem,
+  updateCatalogItem,
+  deleteCatalogItem,
   bulkUploadCatalogItems,
+  getInventoryStats,
 };

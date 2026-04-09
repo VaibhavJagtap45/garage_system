@@ -10,6 +10,7 @@ const {
   verifyOTP,
   resendOTP,
   completeGarageProfile,
+  getMyGarage,
   refresh,
   logout,
 } = require("../controllers/auth.controller");
@@ -22,6 +23,7 @@ router.post("/verify-otp", validate(otpVerifySchema), verifyOTP);
 router.post("/refresh", refresh);
 
 // ── Protected routes ──────────────────────────────────────────────
+router.get("/garage", protect, getMyGarage);
 router.post(
   "/update-garage-profile",
   protect,

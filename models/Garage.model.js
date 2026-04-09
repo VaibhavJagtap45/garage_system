@@ -45,8 +45,8 @@ const GarageSchema = new mongoose.Schema(
       type: String,
       default: null,
       validate: {
-        validator: (v) => !v || /^https?:\/\/.+/.test(v),
-        message: "garageLogo must be a valid URL",
+        validator: (v) => !v || /^https?:\/\/.+/.test(v) || /^data:image\/.+;base64,/.test(v),
+        message: "garageLogo must be a valid URL or base64 data URI",
       },
     },
     state: {
@@ -77,6 +77,13 @@ const GarageSchema = new mongoose.Schema(
     isProfileComplete: {
       type: Boolean,
       default: false,
+    },
+
+    // ── Admin approval status ─────────────────────────────────────
+    approvalStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
     },
   },
   {

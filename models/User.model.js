@@ -20,7 +20,8 @@ const UserSchema = new mongoose.Schema(
       sparse: true,
       lowercase: true,
       trim: true,
-      default: null,
+      // No default — field must be absent (not null) for sparse index to exclude it.
+      // Storing null counts as a value and breaks the unique constraint for phone-only users.
     },
     phoneNo: {
       type: String,

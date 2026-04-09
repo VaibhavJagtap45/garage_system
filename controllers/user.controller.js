@@ -213,14 +213,16 @@ const addUser = asyncHandler(async (req, res) => {
   }
 
   // ── 4. Create user — stamp with owner's garageId ───────────────
+  // emailId must be OMITTED (not null) when absent so the sparse
+  // unique index does not treat multiple null values as duplicates.
   const newUser = await User.create({
-    phoneNo: phoneNo ?? null,
-    emailId: emailId ? emailId.toLowerCase() : null,
-    fullName: fullName ?? null,
-    address: address ?? null,
+    ...(phoneNo && { phoneNo }),
+    ...(emailId && { emailId: emailId.toLowerCase() }),
+    ...(fullName && { fullName }),
+    ...(address && { address }),
     role,
     isVerified: true,
-    garage: garage._id, // ← link to owner's garage
+    garage: garage._id,
   });
 
   // ── 5. If customer — optionally create vehicle too ──────────────

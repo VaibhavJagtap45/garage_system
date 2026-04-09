@@ -1,5 +1,11 @@
 const mongoose = require("mongoose");
 
+// ─────────────────────────────────────────────────────────────────
+//  GarageServiceCatalog
+//  Master list of services a garage offers (not a job-card entry).
+//  Supports generic (all vehicles) or specific brand/model scoping.
+// ─────────────────────────────────────────────────────────────────
+
 const garageServiceCatalogSchema = new mongoose.Schema(
   {
     garageId: {
@@ -9,43 +15,22 @@ const garageServiceCatalogSchema = new mongoose.Schema(
       index: true,
     },
 
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    itemType: {
+    serviceNo: {
       type: String,
-      enum: ["service", "part"],
-      required: true,
-      index: true,
+      trim: true,
+      default: null,
     },
 
     name: {
       type: String,
-      required: true,
+      required: [true, "Service name is required"],
       trim: true,
-      index: true,
     },
 
-    no: {
+    category: {
       type: String,
       trim: true,
-      default: "",
-    },
-
-    serviceCategory: {
-      type: String,
-      trim: true,
-      default: "",
-      index: true,
-    },
-
-    manufacturer: {
-      type: String,
-      trim: true,
-      default: "",
+      default: "Other",
     },
 
     mrp: {
@@ -54,53 +39,48 @@ const garageServiceCatalogSchema = new mongoose.Schema(
       min: 0,
     },
 
-    purchasePrice: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
-    stock: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
-    manageInventory: {
-      type: Boolean,
-      default: false,
-    },
-
+    // "generic" → applicable to all vehicles
+    // "specific" → only for listed brands / models
     applicability: {
       type: String,
       enum: ["generic", "specific"],
       default: "generic",
     },
 
-    applicableBrands: [{ type: String, trim: true }],
-    applicableModels: [{ type: String, trim: true }],
+    // Applicable vehicle brands (used when applicability === "specific")
+    applicableBrands: {
+      type: [String],
+      default: [],
+    },
+
+    // Applicable vehicle models (used when applicability === "specific")
+    applicableModels: {
+      type: [String],
+      default: [],
+    },
 
     isActive: {
       type: Boolean,
       default: true,
       index: true,
     },
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
   },
   { timestamps: true },
 );
 
-garageServiceCatalogSchema.index({
-  garageId: 1,
-  itemType: 1,
-  isActive: 1,
-  category: 1,
-});
-
-garageServiceCatalogSchema.index({
-  garageId: 1,
-  itemType: 1,
-  name: 1,
-});
+// compound indexes for fast garage-scoped queries
+garageServiceCatalogSchema.index({ garageId: 1, isDeleted: 1 });
+garageServiceCatalogSchema.index({ garageId: 1, category: 1 });
+garageServiceCatalogSchema.index(
+  { garageId: 1, serviceNo: 1 },
+  { unique: true, sparse: true },
+);
 
 garageServiceCatalogSchema.methods.toJSON = function () {
   const obj = this.toObject();
@@ -108,4 +88,7 @@ garageServiceCatalogSchema.methods.toJSON = function () {
   return obj;
 };
 
-module.exports = mongoose.model("GarageServiceCatalog", garageServiceCatalogSchema);
+module.exports = mongoose.model(
+  "GarageServiceCatalog",
+  garageServiceCatalogSchema,
+);

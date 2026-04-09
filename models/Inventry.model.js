@@ -143,12 +143,12 @@ inventorySchema.index({ garageId: 1, partName: 1 });
 inventorySchema.index({ garageId: 1, partCode: 1 }, { unique: false });
 inventorySchema.index({ garageId: 1, applicability: 1, category: 1 });
 
-inventorySchema.pre("save", function (next) {
-  if (this.partCode) {
-    this.partCode = this.partCode.trim().toUpperCase();
-  }
-  next();
-});
+// inventorySchema.pre("save", function (next) {
+//   if (this.partCode) {
+//     this.partCode = this.partCode.trim().toUpperCase();
+//   }
+//   next();
+// });
 
 inventorySchema.methods.toJSON = function () {
   const obj = this.toObject();

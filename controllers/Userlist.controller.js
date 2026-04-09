@@ -210,4 +210,31 @@ const getUserDetail = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { getUsersByRole, getUserDetail };
+// ─────────────────────────────────────────────────────────────────
+//  DELETE USER BY ID
+//  DELETE /api/v1/customers/:id
+//  Access: Owner only — must belong to their garage
+// ─────────────────────────────────────────────────────────────────
+const deleteUser = asyncHandler(async (req, res) => {
+  if (req.user.role !== "owner") {
+    return sendError(res, 403, "Access denied. Only owners can delete users.");
+  }
+
+  const { userId } = req.params;
+
+  const user = await User.findById(userId).lean();
+  if (!user) return sendError(res, 404, "User not found.");
+
+  // Scope check — can only delete users that belong to this garage
+  const garage = await Garage.findOne({ owner: req.user._id }).lean();
+  if (!garage || String(user.garage) !== String(garage._id)) {
+    return sendError(res, 403, "You can only delete customers from your own garage.");
+  }
+
+  await User.findByIdAndDelete(userId);
+  await Vehicle.deleteMany({ user: userId }); // cascade-delete linked vehicles
+
+  return sendSuccess(res, 200, "Customer deleted successfully.");
+});
+
+module.exports = { getUsersByRole, getUserDetail, deleteUser };

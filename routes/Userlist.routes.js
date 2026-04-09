@@ -71,6 +71,7 @@ const protect = require("../middlewares/auth");
 const {
   getUsersByRole,
   getUserDetail,
+  deleteUser,
 } = require("../controllers/Userlist.controller");
 
 router.use(protect);
@@ -105,11 +106,14 @@ router.get(
 
 router.get(
   "/customers/:id",
-  (req, res, next) => {
-    req.params.userId = req.params.id;
-    next();
-  },
+  (req, res, next) => { req.params.userId = req.params.id; next(); },
   getUserDetail,
+);
+
+router.delete(
+  "/customers/:id",
+  (req, res, next) => { req.params.userId = req.params.id; next(); },
+  deleteUser,
 );
 
 router.get(
