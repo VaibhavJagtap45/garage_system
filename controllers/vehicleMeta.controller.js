@@ -1,6 +1,7 @@
 const VehicleMeta = require("../models/VehicleMeta.model");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/response.utils");
+const escapeRegex = require("../utils/escapeRegex");
 
 // ─────────────────────────────────────────────────────────────────
 //  Route : POST /api/v1/vehicle/brand
@@ -17,7 +18,7 @@ const addBrand = asyncHandler(async (req, res) => {
 
   // Check if brand already exists (case-insensitive)
   const existing = await VehicleMeta.findOne({
-    brand: { $regex: new RegExp(`^${brand}$`, "i") },
+    brand: { $regex: new RegExp(`^${escapeRegex(brand)}$`, "i") },
   });
 
   if (existing) {
@@ -64,7 +65,7 @@ const addModel = asyncHandler(async (req, res) => {
   }
 
   const vehicleMeta = await VehicleMeta.findOne({
-    brand: { $regex: new RegExp(`^${brand}$`, "i") },
+    brand: { $regex: new RegExp(`^${escapeRegex(brand)}$`, "i") },
   });
 
   if (!vehicleMeta) {
@@ -116,7 +117,7 @@ const getMetaModelsByBrand = asyncHandler(async (req, res) => {
   }
 
   const vehicleMeta = await VehicleMeta.findOne({
-    brand: { $regex: new RegExp(`^${brand}$`, "i") },
+    brand: { $regex: new RegExp(`^${escapeRegex(brand)}$`, "i") },
   }).lean();
 
   if (!vehicleMeta) {

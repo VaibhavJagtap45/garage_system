@@ -4,6 +4,7 @@ const Garage = require("../models/Garage.model");
 const Inventory = require("../models/Inventry.model");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/response.utils");
+const escapeRegex = require("../utils/escapeRegex");
 
 function clampAmount(value, max) {
   const amount = Number(value) || 0;
@@ -51,13 +52,7 @@ async function applyInventoryDelta(garageId, previousParts = [], nextParts = [])
 }
 
 // ─── Helper ───────────────────────────────────────────────────────
-async function resolveGarageId(user) {
-  if (user.role === "owner") {
-    const g = await Garage.findOne({ owner: user._id }).select("_id").lean();
-    return g?._id ?? null;
-  }
-  return user.garage ?? null;
-}
+const resolveGarageId = require("../utils/resolveGarageId");
 
 async function nextInvoiceNo(garageId) {
   const count = await Invoice.countDocuments({ garageId });
@@ -130,7 +125,7 @@ const listInvoices = asyncHandler(async (req, res) => {
   // Full-text search: match invoice number OR customers by name/phone
   if (search && search.trim()) {
     const User = require("../models/User.model");
-    const rx = new RegExp(search.trim(), "i");
+    const rx = new RegExp(escapeRegex(search.trim()), "i");
     const matchingCustomers = await User.find({
       $or: [{ fullName: rx }, { phoneNo: rx }],
     })

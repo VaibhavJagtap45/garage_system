@@ -267,4 +267,26 @@ const addUser = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { getProfile, addUser };
+// ─────────────────────────────────────────────────────────────────
+//  SAVE PUSH TOKEN
+//  Route : POST /api/v1/user/push-token
+//  Body  : { token: "ExponentPushToken[...]" }
+//  Access: Any authenticated user
+// ─────────────────────────────────────────────────────────────────
+const savePushToken = asyncHandler(async (req, res) => {
+  const { token } = req.body;
+
+  if (!token || typeof token !== "string") {
+    return sendError(res, 400, "token (string) is required.");
+  }
+
+  if (!token.startsWith("ExponentPushToken[")) {
+    return sendError(res, 400, "Invalid Expo push token format.");
+  }
+
+  await User.findByIdAndUpdate(req.user._id, { pushToken: token });
+
+  return sendSuccess(res, 200, "Push token saved.");
+});
+
+module.exports = { getProfile, addUser, savePushToken };

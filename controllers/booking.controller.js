@@ -9,6 +9,7 @@ const {
   removeBookingFromOwnerCalendar,
   syncBookingToOwnerCalendar,
 } = require("../services/googleCalendar.service");
+const { notifyUser, TEMPLATES } = require("../services/pushNotification.service");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper — get the owner's garage or 404
@@ -125,6 +126,15 @@ const createBooking = asyncHandler(async (req, res) => {
   if (calendarSync?.googleCalendar) {
     populated = { ...populated, googleCalendar: calendarSync.googleCalendar };
   }
+
+  // Fire-and-forget — notify customer their booking is confirmed
+  (async () => {
+    try {
+      await notifyUser(customerId, TEMPLATES.BOOKING_CONFIRMED(booking.bookingNo));
+    } catch (err) {
+      console.error("[Push] Booking confirmed notification failed:", err.message);
+    }
+  })();
 
   return sendSuccess(res, 201, "Booking created.", {
     booking: populated,

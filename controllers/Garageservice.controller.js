@@ -1,17 +1,10 @@
 const csv = require("csv-parse/sync");
 const GarageServiceCatalog = require("../models/GarageServiceCatalog.model");
-const Garage = require("../models/Garage.model");
 const VehicleMeta = require("../models/VehicleMeta.model");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/response.utils");
-
-// ─────────────────────────────────────────────────────────────────
-//  Helper — resolve garageId from the authenticated owner
-// ─────────────────────────────────────────────────────────────────
-async function resolveGarageId(userId) {
-  const garage = await Garage.findOne({ owner: userId }).select("_id").lean();
-  return garage ? garage._id : null;
-}
+const resolveGarageId = require("../utils/resolveGarageId");
+const escapeRegex = require("../utils/escapeRegex");
 
 // ─────────────────────────────────────────────────────────────────
 //  Helper — auto-generate next service number for a garage
@@ -41,7 +34,7 @@ async function nextServiceNo(garageId) {
 //  Query params: search, category, brand, model, page, limit
 // ─────────────────────────────────────────────────────────────────
 const getServices = asyncHandler(async (req, res) => {
-  const garageId = await resolveGarageId(req.user._id);
+  const garageId = await resolveGarageId(req.user);
   if (!garageId) {
     return sendSuccess(res, 200, "Services fetched.", {
       total: 0,
@@ -53,13 +46,14 @@ const getServices = asyncHandler(async (req, res) => {
 
   const filter = { garageId, isDeleted: false };
 
-  if (category) filter.category = { $regex: category, $options: "i" };
+  if (category) filter.category = { $regex: escapeRegex(category), $options: "i" };
 
   if (search) {
+    const safeSearch = escapeRegex(search);
     filter.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { serviceNo: { $regex: search, $options: "i" } },
-      { category: { $regex: search, $options: "i" } },
+      { name: { $regex: safeSearch, $options: "i" } },
+      { serviceNo: { $regex: safeSearch, $options: "i" } },
+      { category: { $regex: safeSearch, $options: "i" } },
     ];
   }
 
@@ -70,13 +64,13 @@ const getServices = asyncHandler(async (req, res) => {
     if (brand) {
       conditions.push({
         applicability: "specific",
-        applicableBrands: { $in: [new RegExp(`^${brand}$`, "i")] },
+        applicableBrands: { $in: [new RegExp(`^${escapeRegex(brand)}$`, "i")] },
       });
     }
     if (model) {
       conditions.push({
         applicability: "specific",
-        applicableModels: { $in: [new RegExp(`^${model}$`, "i")] },
+        applicableModels: { $in: [new RegExp(`^${escapeRegex(model)}$`, "i")] },
       });
     }
 
@@ -109,7 +103,7 @@ const getServices = asyncHandler(async (req, res) => {
 //  Body: { name, mrp, serviceNo, category, applicability, applicableBrands, applicableModels }
 // ─────────────────────────────────────────────────────────────────
 const addService = asyncHandler(async (req, res) => {
-  const garageId = await resolveGarageId(req.user._id);
+  const garageId = await resolveGarageId(req.user);
   if (!garageId) {
     return sendError(res, 404, "Garage not found for this account.");
   }
@@ -131,7 +125,7 @@ const addService = asyncHandler(async (req, res) => {
   // Validate brand/model names against VehicleMeta if specific
   if (applicability === "specific" && applicableBrands.length > 0) {
     const found = await VehicleMeta.find({
-      brand: { $in: applicableBrands.map((b) => new RegExp(`^${b}$`, "i")) },
+      brand: { $in: applicableBrands.map((b) => new RegExp(`^${escapeRegex(b)}$`, "i")) },
     }).lean();
     if (found.length !== applicableBrands.length) {
       const foundNames = found.map((f) => f.brand.toLowerCase());
@@ -178,7 +172,7 @@ const addService = asyncHandler(async (req, res) => {
 //  PUT /api/v1/garage-services/:id
 // ─────────────────────────────────────────────────────────────────
 const updateService = asyncHandler(async (req, res) => {
-  const garageId = await resolveGarageId(req.user._id);
+  const garageId = await resolveGarageId(req.user);
   if (!garageId) return sendError(res, 404, "Garage not found.");
 
   const service = await GarageServiceCatalog.findOne({
@@ -213,7 +207,7 @@ const updateService = asyncHandler(async (req, res) => {
 //  DELETE /api/v1/garage-services/:id  (soft delete)
 // ─────────────────────────────────────────────────────────────────
 const deleteService = asyncHandler(async (req, res) => {
-  const garageId = await resolveGarageId(req.user._id);
+  const garageId = await resolveGarageId(req.user);
   if (!garageId) return sendError(res, 404, "Garage not found.");
 
   const service = await GarageServiceCatalog.findOneAndUpdate(
@@ -240,7 +234,7 @@ const deleteService = asyncHandler(async (req, res) => {
 //  Returns: { inserted, skipped, errors[] }
 // ─────────────────────────────────────────────────────────────────
 const bulkImportCsv = asyncHandler(async (req, res) => {
-  const garageId = await resolveGarageId(req.user._id);
+  const garageId = await resolveGarageId(req.user);
   if (!garageId) return sendError(res, 404, "Garage not found.");
 
   if (!req.file) {
@@ -311,7 +305,7 @@ const bulkImportCsv = asyncHandler(async (req, res) => {
     // Check for duplicate name within this garage (skip silently)
     const dupName = await GarageServiceCatalog.findOne({
       garageId,
-      name: { $regex: `^${name}$`, $options: "i" },
+      name: { $regex: `^${escapeRegex(name)}$`, $options: "i" },
       isDeleted: false,
     });
 
@@ -352,7 +346,7 @@ const bulkImportCsv = asyncHandler(async (req, res) => {
 //  Returns distinct categories used by this garage
 // ─────────────────────────────────────────────────────────────────
 const getCategories = asyncHandler(async (req, res) => {
-  const garageId = await resolveGarageId(req.user._id);
+  const garageId = await resolveGarageId(req.user);
   if (!garageId) return sendSuccess(res, 200, "OK", { categories: [] });
 
   const cats = await GarageServiceCatalog.distinct("category", {

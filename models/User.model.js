@@ -66,6 +66,14 @@ const UserSchema = new mongoose.Schema(
       token: { type: String },
       expiresAt: { type: Date },
     },
+
+    // ── Expo Push Token ───────────────────────────────────────────
+    // Stored as-is from the device (e.g. "ExponentPushToken[xxx]").
+    // Cleared automatically when Expo reports DeviceNotRegistered.
+    pushToken: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -77,6 +85,7 @@ UserSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.otp;
   delete obj.refreshToken;
+  delete obj.pushToken; // device token — must never leak to API consumers
   delete obj.__v;
   return obj;
 };

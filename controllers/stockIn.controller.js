@@ -1,16 +1,8 @@
 const StockIn = require("../models/StockIn.model");
 const Inventory = require("../models/Inventry.model");
-const Garage = require("../models/Garage.model");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/response.utils");
-
-async function resolveGarageId(user) {
-  if (user.role === "owner") {
-    const g = await Garage.findOne({ owner: user._id }).select("_id").lean();
-    return g?._id ?? null;
-  }
-  return user.garage ?? null;
-}
+const resolveGarageId = require("../utils/resolveGarageId");
 
 // ─────────────────────────────────────────────────────────────────
 //  GET /api/v1/stock-in?page=1&limit=50

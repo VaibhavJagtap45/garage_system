@@ -1,15 +1,7 @@
 const Expense = require("../models/Expense.model");
-const Garage = require("../models/Garage.model");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/response.utils");
-
-async function resolveGarageId(user) {
-  if (user.role === "owner") {
-    const g = await Garage.findOne({ owner: user._id }).select("_id").lean();
-    return g?._id ?? null;
-  }
-  return user.garage ?? null;
-}
+const resolveGarageId = require("../utils/resolveGarageId");
 
 function buildDateFilter(dateFrom, dateTo) {
   if (!dateFrom && !dateTo) return {};

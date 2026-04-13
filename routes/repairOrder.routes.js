@@ -12,6 +12,7 @@ const {
   getCancelledOrders,
   tallyExport,
   getGarageMembers,
+  getCalendarOrders,
 } = require("../controllers/RepairOrder.controller");
 
 router.use(protect);
@@ -30,6 +31,9 @@ router.get("/cancelled", getCancelledOrders);
 
 // GET  /api/v1/repair-orders/tally-export
 router.get("/tally-export", tallyExport);
+
+// GET  /api/v1/repair-orders/calendar?dateFrom=&dateTo=
+router.get("/calendar", getCalendarOrders);
 
 // GET  /api/v1/repair-orders
 router.get("/", listRepairOrders);
