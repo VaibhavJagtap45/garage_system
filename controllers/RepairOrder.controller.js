@@ -237,6 +237,7 @@ const RepairOrder = require("../models/RepairOrder.model");
 const Vehicle = require("../models/Vehicle.model");
 const User = require("../models/User.model");
 const Garage = require("../models/Garage.model");
+const { sendWhatsApp } = require("../utils/whatsapp");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/response.utils");
 
@@ -250,8 +251,15 @@ async function resolveGarageId(user) {
 }
 
 async function nextOrderNo(garageId) {
-  const count = await RepairOrder.countDocuments({ garageId });
-  return `RO-${String(count + 1).padStart(5, "0")}`;
+  // Find the actual highest orderNo for this garage — safe against deletions and
+  // concurrent inserts (unlike countDocuments which drifts when rows are removed).
+  const last = await RepairOrder.findOne(
+    { garageId, orderNo: { $exists: true, $ne: null } },
+    { orderNo: 1 },
+    { sort: { orderNo: -1 } },
+  ).lean();
+  const lastNum = last?.orderNo ? parseInt(last.orderNo.replace(/\D/g, ""), 10) || 0 : 0;
+  return `RO-${String(lastNum + 1).padStart(5, "0")}`;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -482,11 +490,8 @@ const createRepairOrder = asyncHandler(async (req, res) => {
   if (!customerId) return sendError(res, 400, "customerId is required.");
   if (!vehicleId) return sendError(res, 400, "vehicleId is required.");
 
-  const orderNo = await nextOrderNo(garageId);
-
-  const order = await RepairOrder.create({
+  const payload = {
     garageId,
-    orderNo,
     customerId,
     vehicleId,
     odometerReading: odometerReading ?? null,
@@ -504,13 +509,25 @@ const createRepairOrder = asyncHandler(async (req, res) => {
     tags,
     customerRemarks,
     scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
-    estimatedDeliveryAt: estimatedDeliveryAt
-      ? new Date(estimatedDeliveryAt)
-      : null,
+    estimatedDeliveryAt: estimatedDeliveryAt ? new Date(estimatedDeliveryAt) : null,
     notifyCustomer,
     createdBy: req.user._id,
     status: "created",
-  });
+  };
+
+  // Retry up to 5 times on duplicate orderNo (handles concurrent requests).
+  // Each retry re-queries the max orderNo so it always picks the next free slot.
+  let order;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    payload.orderNo = await nextOrderNo(garageId);
+    try {
+      order = await RepairOrder.create(payload);
+      break;
+    } catch (err) {
+      if (err.code === 11000 && attempt < 4) continue; // duplicate key — retry
+      throw err;
+    }
+  }
 
   return sendSuccess(res, 201, "Repair order created.", { order });
 });
@@ -552,11 +569,47 @@ const updateRepairOrder = asyncHandler(async (req, res) => {
     "assignedAt",
   ];
 
+  const previousStatus = order.status;
+
   allowed.forEach((k) => {
     if (req.body[k] !== undefined) order[k] = req.body[k];
   });
 
   await order.save();
+
+  // ── Auto WhatsApp notification on vehicle_ready ──────────────────
+  if (
+    req.body.status === "vehicle_ready" &&
+    previousStatus !== "vehicle_ready"
+  ) {
+    // Fire-and-forget — don't block the response
+    (async () => {
+      try {
+        const [garage, customer] = await Promise.all([
+          Garage.findById(garageId).select("preferences garageName").lean(),
+          order.customerId
+            ? User.findById(order.customerId).select("fullName phoneNo").lean()
+            : null,
+        ]);
+
+        if (garage?.preferences?.autoWaNotification && customer?.phoneNo) {
+          const gName = garage.garageName ?? "Your garage";
+          const cName = customer.fullName ?? "Customer";
+          const roNo  = order.orderNo ?? "your repair order";
+          const msg =
+            `Hi ${cName}! 🚗\n\n` +
+            `Your vehicle is ready for pickup at *${gName}*.\n` +
+            `Repair Order: *${roNo}*\n\n` +
+            `Please visit us at your earliest convenience. Thank you!`;
+
+          await sendWhatsApp(customer.phoneNo, msg);
+        }
+      } catch (err) {
+        console.error("[WA Notify] Error:", err.message);
+      }
+    })();
+  }
+
   return sendSuccess(res, 200, "Repair order updated.", { order });
 });
 

@@ -85,6 +85,14 @@ const GarageSchema = new mongoose.Schema(
       enum: ["pending", "approved", "rejected"],
       default: "pending",
     },
+
+    // ── App Preferences ───────────────────────────────────────────
+    preferences: {
+      notificationsEnabled:  { type: Boolean, default: true },
+      autoUpdates:           { type: Boolean, default: true },
+      autoWaNotification:    { type: Boolean, default: false },
+      fontSize:              { type: String, enum: ["small", "medium", "large"], default: "medium" },
+    },
   },
   {
     timestamps: true,
@@ -92,9 +100,8 @@ const GarageSchema = new mongoose.Schema(
 );
 
 // ── Auto-clear GST number when not applicable ─────────────────────
-GarageSchema.pre("save", function (next) {
+GarageSchema.pre("save", async function () {
   if (!this.isGstApplicable) this.gstNumber = null;
-  next();
 });
 
 // ── Strip internal fields from API responses ──────────────────────

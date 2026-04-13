@@ -84,7 +84,39 @@ const oauthCallback = async (req, res) => {
     const result = await completeGoogleCalendarOAuth(req.query);
     const redirectUrl = new URL(result.appRedirectUri);
     redirectUrl.searchParams.set("googleCalendar", "connected");
-    return res.redirect(302, redirectUrl.toString());
+    const deepLink = escapeHtml(redirectUrl.toString());
+    return res
+      .status(200)
+      .type("html")
+      .send(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>Google Calendar Connected</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:Arial,sans-serif;background:#f0fdf4;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+      .card{background:#fff;border-radius:16px;padding:32px 24px;text-align:center;max-width:360px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,.08)}
+      .icon{font-size:48px;margin-bottom:16px}
+      h2{color:#1D9E75;font-size:20px;margin-bottom:8px}
+      p{color:#6B7280;font-size:14px;line-height:1.6;margin-bottom:24px}
+      a{display:inline-block;padding:14px 28px;background:#1D9E75;color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px}
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="icon">✅</div>
+      <h2>Google Calendar Connected!</h2>
+      <p>Your garage bookings will now sync automatically to your Google Calendar.</p>
+      <a href="${deepLink}">Return to App</a>
+    </div>
+    <script>
+      // Auto-return to app — works if OS handles the custom scheme
+      setTimeout(function(){ window.location.replace("${deepLink}"); }, 600);
+    </script>
+  </body>
+</html>`);
   } catch (error) {
     return browserMessage(
       res,

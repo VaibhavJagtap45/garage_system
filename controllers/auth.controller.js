@@ -237,6 +237,44 @@ const logout = asyncHandler(async (req, res) => {
   return sendSuccess(res, 200, "Logged out successfully");
 });
 
+// ─────────────────────────────────────────────────────────────────
+//  POST /auth/upload-image  — upload a garage logo / image
+//  Accepts multipart/form-data with field "file" (image only, ≤5MB)
+//  Returns { url } — the publicly accessible URL of the stored file
+// ─────────────────────────────────────────────────────────────────
+const uploadImage = asyncHandler(async (req, res) => {
+  if (!req.file) return sendError(res, 400, "No file uploaded.");
+  const url = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+  return sendSuccess(res, 200, "Image uploaded successfully", { url });
+});
+
+// ─────────────────────────────────────────────────────────────────
+//  PATCH /auth/preferences  — save garage app preferences
+//  Body: { notificationsEnabled, autoUpdates, autoWaNotification, fontSize }
+// ─────────────────────────────────────────────────────────────────
+const updatePreferences = asyncHandler(async (req, res) => {
+  if (req.user.role !== "owner") return sendError(res, 403, "Only owners can update preferences.");
+
+  const garage = await Garage.findOne({ owner: req.user._id });
+  if (!garage) return sendError(res, 404, "Garage not found.");
+
+  const allowed = ["notificationsEnabled", "autoUpdates", "autoWaNotification", "fontSize"];
+  const validFontSizes = ["small", "medium", "large"];
+
+  if (!garage.preferences) garage.preferences = {};
+
+  for (const key of allowed) {
+    if (req.body[key] === undefined) continue;
+    if (key === "fontSize" && !validFontSizes.includes(req.body[key])) continue;
+    garage.preferences[key] = req.body[key];
+  }
+
+  garage.markModified("preferences");
+  await garage.save();
+
+  return sendSuccess(res, 200, "Preferences saved.", { preferences: garage.preferences });
+});
+
 module.exports = {
   requestOTP,
   verifyOTP,
@@ -245,4 +283,6 @@ module.exports = {
   getMyGarage,
   refresh,
   logout,
+  uploadImage,
+  updatePreferences,
 };

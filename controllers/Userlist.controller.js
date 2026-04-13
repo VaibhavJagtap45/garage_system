@@ -105,6 +105,8 @@
 const User = require("../models/User.model");
 const Garage = require("../models/Garage.model");
 const Vehicle = require("../models/Vehicle.model");
+const PurchaseOrder = require("../models/PurchaseOrder.model");
+const StockIn = require("../models/StockIn.model");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/response.utils");
 
@@ -202,6 +204,52 @@ const getUserDetail = asyncHandler(async (req, res) => {
       user,
       vehicles,
       totalVehicles: vehicles.length,
+    });
+  }
+
+  if (user.role === "vendor") {
+    // Scope to the requesting owner's garage
+    const garage = await Garage.findOne({ owner: req.user._id }).select("_id").lean();
+    const garageId = garage?._id ?? null;
+
+    const [purchaseOrders, stockIns, statsArr] = await Promise.all([
+      garageId
+        ? PurchaseOrder.find({ garageId, vendorId: userId, isDeleted: false })
+            .sort({ createdAt: -1 })
+            .lean()
+        : [],
+      garageId
+        ? StockIn.find({ garageId, vendorId: userId, isDeleted: false })
+            .sort({ date: -1 })
+            .lean()
+        : [],
+      garageId
+        ? PurchaseOrder.aggregate([
+            { $match: { garageId, vendorId: user._id, isDeleted: false } },
+            {
+              $group: {
+                _id:           null,
+                totalOrders:   { $sum: 1 },
+                totalValue:    { $sum: "$totalAmount" },
+                pendingOrders: { $sum: { $cond: [{ $in: ["$status", ["draft", "sent"]] }, 1, 0] } },
+                pendingValue:  { $sum: { $cond: [{ $in: ["$status", ["draft", "sent"]] }, "$totalAmount", 0] } },
+                receivedOrders:{ $sum: { $cond: [{ $eq: ["$status", "received"] }, 1, 0] } },
+              },
+            },
+          ])
+        : [],
+    ]);
+
+    const stats = statsArr[0] ?? {
+      totalOrders: 0, totalValue: 0,
+      pendingOrders: 0, pendingValue: 0, receivedOrders: 0,
+    };
+
+    return sendSuccess(res, 200, "Vendor details fetched successfully.", {
+      user,
+      purchaseOrders,
+      stockIns,
+      stats,
     });
   }
 

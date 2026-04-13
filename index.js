@@ -112,6 +112,7 @@
 const dotenv = require("dotenv");
 dotenv.config();
 require("dns").setDefaultResultOrder("ipv4first");
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -137,6 +138,7 @@ const MemberRoutes = require("./routes/member.routes");
 const AdminRoutes = require("./routes/admin.routes");
 const BookingRoutes = require("./routes/booking.routes");
 const GoogleCalendarRoutes = require("./routes/googleCalendar.routes");
+const ReportsRoutes = require("./routes/reports.routes");
 // const VehicleMetaRoutes = require("./routes/vehicleMeta.routes");
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -149,6 +151,9 @@ app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 
 // ── CORS ───────────────────────────────────────────────────────────
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",").map((o) => o.trim()) ?? [];
+const localDevOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+const privateLanDevOrigin =
+  /^https?:\/\/(10(?:\.\d{1,3}){3}|172\.(1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2})(:\d+)?$/i;
 
 app.use(
   cors({
@@ -156,7 +161,10 @@ app.use(
       // No origin = same-origin / mobile app / server-to-server — allow
       if (!origin) return callback(null, true);
       // In development, allow any localhost port (Vite dev server, admin panel, etc.)
-      if (process.env.NODE_ENV === "development" && /^https?:\/\/localhost(:\d+)?$/.test(origin)) {
+      if (
+        process.env.NODE_ENV === "development" &&
+        (localDevOrigin.test(origin) || privateLanDevOrigin.test(origin))
+      ) {
         return callback(null, true);
       }
       if (allowedOrigins.includes(origin)) return callback(null, true);
@@ -172,6 +180,9 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" })); // FormData support
 app.use(cookieParser());
+
+// ── Static uploads ─────────────────────────────────────────────────
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ── Health check ───────────────────────────────────────────────────
 app.get("/", (_req, res) =>
@@ -199,6 +210,7 @@ app.use(`/api/${API_VERSION}/customer`, CustomerRoutes);
 app.use(`/api/${API_VERSION}/member`, MemberRoutes);
 app.use(`/api/${API_VERSION}/bookings`, BookingRoutes);
 app.use(`/api/${API_VERSION}/integrations/google-calendar`, GoogleCalendarRoutes);
+app.use(`/api/${API_VERSION}/reports`, ReportsRoutes);
 // ── 404 handler ────────────────────────────────────────────────────
 app.use((_req, res) =>
   res.status(404).json({ success: false, message: "Route not found." }),

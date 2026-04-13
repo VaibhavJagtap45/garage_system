@@ -72,6 +72,7 @@ const invoiceSchema = new mongoose.Schema(
     discountAmount: { type: Number, default: 0 },
     taxAmount: { type: Number, default: 0 },
     totalAmount: { type: Number, default: 0 },
+    paidAmount: { type: Number, default: 0, min: 0 },
 
     notifyCustomer: { type: Boolean, default: false },
 
