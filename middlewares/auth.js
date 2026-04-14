@@ -7,7 +7,10 @@ const User = require("../models/User.model");
 //
 //  Guards any route that requires an authenticated user.
 //  Validates the Bearer access token, ensures the user still exists
-//  and has a verified mobile number, then attaches `req.user`.
+//  and has a verified account, then attaches `req.user`.
+//
+//  Note: password has select:false in schema so it is never returned
+//  here — no extra exclusion needed.
 // ─────────────────────────────────────────────────────────────────
 const protect = async (req, res, next) => {
   try {
@@ -36,8 +39,8 @@ const protect = async (req, res, next) => {
     }
 
     // 3. Confirm the account still exists
-    //    Exclude otp and refreshToken — we never need them downstream
-    const user = await User.findById(decoded.sub).select("-otp -refreshToken");
+    //    Exclude refreshToken — never needed downstream
+    const user = await User.findById(decoded.sub).select("-refreshToken");
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -45,11 +48,11 @@ const protect = async (req, res, next) => {
       });
     }
 
-    // 4. Require a verified mobile number
+    // 4. Require a verified account
     if (!user.isVerified) {
       return res.status(403).json({
         success: false,
-        message: "Mobile number not verified.",
+        message: "Account is not verified.",
       });
     }
 

@@ -4,14 +4,15 @@ const fs = require("fs");
 const multer = require("multer");
 const validate = require("../middlewares/validate");
 const {
-  requestOtpSchema,
-  otpVerifySchema,
+  registerSchema,
+  loginSchema,
+  changePasswordSchema,
   garageProfileSchema,
 } = require("../validators/user.validator");
 const {
-  requestOTP,
-  verifyOTP,
-  resendOTP,
+  register,
+  login,
+  changePassword,
   completeGarageProfile,
   getMyGarage,
   refresh,
@@ -39,13 +40,13 @@ const upload = multer({
   },
 });
 
-// ── Public routes (no auth required) ─────────────────────────────
-router.post("/request-otp", validate(requestOtpSchema), requestOTP);
-router.post("/resend-otp", validate(requestOtpSchema), resendOTP);
-router.post("/verify-otp", validate(otpVerifySchema), verifyOTP);
+// ── Public routes ─────────────────────────────────────────────────
+router.post("/register", validate(registerSchema), register);
+router.post("/login", validate(loginSchema), login);
 router.post("/refresh", refresh);
 
 // ── Protected routes ──────────────────────────────────────────────
+router.patch("/change-password", protect, validate(changePasswordSchema), changePassword);
 router.get("/garage", protect, getMyGarage);
 router.post(
   "/update-garage-profile",

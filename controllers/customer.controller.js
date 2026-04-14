@@ -9,6 +9,7 @@ const Vehicle = require("../models/Vehicle.model");
 const User = require("../models/User.model");
 const Garage = require("../models/Garage.model");
 const GarageServiceCatalog = require("../models/GarageServiceCatalog.model");
+const { notifyUser, TEMPLATES } = require("../services/pushNotification.service");
 
 // ─── Helper ────────────────────────────────────────────────────────
 function garageId(user) {
@@ -360,6 +361,54 @@ const updateMyProfile = asyncHandler(async (req, res) => {
   return sendSuccess(res, 200, "Profile updated.", { user });
 });
 
+// ─────────────────────────────────────────────────────────────────
+//  PATCH /api/v1/customer/orders/:id/cancel
+//
+//  Customer can cancel their own order only if work has NOT started
+//  (i.e. status is still "created"). Once in_progress or beyond,
+//  they must contact the garage directly.
+//
+//  On success: notifies the garage owner via push notification.
+// ─────────────────────────────────────────────────────────────────
+const cancelMyOrder = asyncHandler(async (req, res) => {
+  const order = await RepairOrder.findOne({
+    _id: req.params.id,
+    customerId: req.user._id,
+    isDeleted: false,
+  });
+
+  if (!order) return sendError(res, 404, "Order not found.");
+
+  if (order.status !== "created") {
+    return sendError(
+      res,
+      400,
+      "This order cannot be cancelled. Work has already started. Please contact your garage.",
+    );
+  }
+
+  order.status = "cancelled";
+  await order.save();
+
+  // Fire-and-forget: notify the garage owner
+  (async () => {
+    try {
+      const garage = await Garage.findById(order.garageId).select("owner").lean();
+      if (garage?.owner) {
+        const customerName = req.user.fullName || req.user.phoneNo || "A customer";
+        await notifyUser(
+          garage.owner,
+          TEMPLATES.OWNER_ORDER_CANCELLED(order.orderNo, customerName),
+        );
+      }
+    } catch (err) {
+      console.error("[Push] Cancel notification to owner failed:", err.message);
+    }
+  })();
+
+  return sendSuccess(res, 200, "Order cancelled successfully.", { order });
+});
+
 module.exports = {
   getGarageInfo,
   getServices,
@@ -368,6 +417,7 @@ module.exports = {
   getMyOrders,
   getOrderDetail,
   createOrder,
+  cancelMyOrder,
   getMyInvoices,
   getInvoiceDetail,
   getMyProfile,

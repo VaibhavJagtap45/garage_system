@@ -1,9 +1,13 @@
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
 const Garage = require("../models/Garage.model");
 const User = require("../models/User.model");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/response.utils");
+
+const SALT_ROUNDS = 10;
+const DEFAULT_PASSWORD = "Aapnogarage123";
 
 // ─────────────────────────────────────────────────────────────────
 //  POST /api/v1/admin/login
@@ -111,7 +115,10 @@ const createGarage = asyncHandler(async (req, res) => {
   session.startTransaction();
 
   try {
-    // Create owner user — isVerified: true, bypass OTP entirely
+    // Hash the default password once before the transaction insert
+    const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, SALT_ROUNDS);
+
+    // Create owner user — isVerified: true, pre-set default password
     const [user] = await User.create(
       [
         {
@@ -121,6 +128,7 @@ const createGarage = asyncHandler(async (req, res) => {
           isVerified: true,
           role: "owner",
           state: state || null,
+          password: hashedPassword,
         },
       ],
       { session }

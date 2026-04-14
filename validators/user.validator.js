@@ -13,35 +13,39 @@ const emailField = z
   .or(z.literal(""))
   .transform((v) => (v === "" ? undefined : v));
 
-const optionalUrlField = (message = "Must be a valid URL") =>
-  z
-    .string()
-    .url(message)
-    .optional()
-    .or(z.literal(""))
-    .transform((v) => (v === "" ? undefined : v));
+const passwordField = z
+  .string()
+  .min(6, "Password must be at least 6 characters")
+  .max(100, "Password is too long");
 
-// ─── Schema: Request OTP ──────────────────────────────────────────
-const requestOtpSchema = z.object({
+// ─── Schema: Register ─────────────────────────────────────────────
+const registerSchema = z.object({
   phoneNo: phoneNoField,
 });
 
-// ─── Schema: Verify OTP ───────────────────────────────────────────
-const otpVerifySchema = z.object({
+// ─── Schema: Login ────────────────────────────────────────────────
+const loginSchema = z.object({
   phoneNo: phoneNoField,
-  otp: z
-    .string()
-    .length(6, "OTP must be 6 digits")
-    .regex(/^\d+$/, "OTP must be numeric"),
+  password: z.string().min(1, "Password is required"),
 });
+
+// ─── Schema: Change Password ──────────────────────────────────────
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: passwordField,
+    confirmPassword: z.string().min(1, "Please confirm your new password"),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  })
+  .refine((data) => data.currentPassword !== data.newPassword, {
+    message: "New password must be different from the current password",
+    path: ["newPassword"],
+  });
 
 // ─── Schema: Complete Garage Profile ─────────────────────────────
-//
-//  This schema mirrors the form that the frontend sends.
-//  It validates both user-level fields (fullName, emailId, state)
-//  and garage-level fields together in one pass — Zod strips/coerces
-//  the values before they reach the controller which then splits them
-//  into the appropriate documents.
 //
 //  isGstApplicable can arrive as a boolean (JSON) or the strings
 //  "true"/"false" (FormData) — both are handled via the preprocess.
@@ -96,35 +100,8 @@ const garageProfileSchema = z
   });
 
 // ─── Schema: Add User  (POST /api/user/add-user) ─────────────────
-//
-//  · role is supplied by the frontend — restricted to non-owner values
-//  · At least one of phoneNo or emailId must be present
-//  · fullName is optional
-// ─────────────────────────────────────────────────────────────────
-// const addUserSchema = z
-//   .object({
-//     phoneNo: phoneNoField.optional(),
-//     emailId: z
-//       .string()
-//       .email("Invalid email format")
-//       .toLowerCase()
-//       .trim()
-//       .optional(),
-//     fullName: z.string().min(2, "Min 2 characters").max(100).trim().optional(),
-//     role: z.enum(["customer", "member", "vendor"], {
-//       errorMap: () => ({
-//         message: "Role must be one of: customer, member, vendor",
-//       }),
-//     }),
-//   })
-//   .refine((data) => data.phoneNo || data.emailId, {
-//     message: "At least one of phoneNo or emailId is required",
-//     path: ["phoneNo"],
-//   });
-// ─── Schema: Add User  (POST /api/user/add-user) ─────────────────
 const addUserSchema = z
   .object({
-    // ── User fields ────────────────────────────────────────────
     phoneNo: phoneNoField.optional(),
     emailId: z
       .string()
@@ -159,8 +136,6 @@ const addUserSchema = z
   })
   .refine(
     (data) => {
-      // If role is customer and either vehicle field is provided,
-      // both vehicleBrand and vehicleModel must be present
       const hasAnyVehicleField = [
         data.vehicleBrand,
         data.vehicleModel,
@@ -179,13 +154,10 @@ const addUserSchema = z
     },
   );
 
-// Add this BELOW the existing optionalUrlField helper:
-
-// Then in garageProfileSchema, change:
-
 module.exports = {
-  requestOtpSchema,
-  otpVerifySchema,
+  registerSchema,
+  loginSchema,
+  changePasswordSchema,
   garageProfileSchema,
   addUserSchema,
 };

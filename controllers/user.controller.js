@@ -126,11 +126,15 @@
 
 // module.exports = { getProfile, addUser };
 
+const bcrypt = require("bcryptjs");
 const User = require("../models/User.model");
 const Garage = require("../models/Garage.model");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/response.utils");
 const Vehicle = require("../models/Vehicle.model");
+
+const SALT_ROUNDS = 10;
+const DEFAULT_PASSWORD = "Aapnogarage123";
 
 // ─────────────────────────────────────────────────────────────────
 //  GET PROFILE
@@ -215,6 +219,10 @@ const addUser = asyncHandler(async (req, res) => {
   // ── 4. Create user — stamp with owner's garageId ───────────────
   // emailId must be OMITTED (not null) when absent so the sparse
   // unique index does not treat multiple null values as duplicates.
+  // All new users get the hashed default password so they can log in
+  // immediately from the mobile app using "Aapnogarage123".
+  const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, SALT_ROUNDS);
+
   const newUser = await User.create({
     ...(phoneNo && { phoneNo }),
     ...(emailId && { emailId: emailId.toLowerCase() }),
@@ -223,6 +231,7 @@ const addUser = asyncHandler(async (req, res) => {
     role,
     isVerified: true,
     garage: garage._id,
+    password: hashedPassword,
   });
 
   // ── 5. If customer — optionally create vehicle too ──────────────

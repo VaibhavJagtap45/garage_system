@@ -11,6 +11,7 @@ const {
   getMyOrders,
   getOrderDetail,
   createOrder,
+  cancelMyOrder,
   getMyInvoices,
   getInvoiceDetail,
   getMyProfile,
@@ -35,6 +36,7 @@ router.post("/vehicles", addMyVehicle);
 router.get("/orders", getMyOrders);
 router.get("/orders/:id", getOrderDetail);
 router.post("/orders", createOrder);
+router.patch("/orders/:id/cancel", cancelMyOrder);
 
 router.get("/invoices", getMyInvoices);
 router.get("/invoices/:id", getInvoiceDetail);

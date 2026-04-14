@@ -1,9 +1,4 @@
-const {
-  generateOTP,
-  OTP_EXPIRY_MINUTES,
-  sendOTP,
-  hashOTP,
-} = require("../services/otp.service");
+const bcrypt = require("bcryptjs");
 const User = require("../models/User.model");
 const Garage = require("../models/Garage.model");
 const asyncHandler = require("../utils/asyncHandler");
@@ -15,7 +10,10 @@ const {
 } = require("../utils/token.utils");
 const { sendSuccess, sendError } = require("../utils/response.utils");
 
-// ─── Cookie config — defined once, reused everywhere ──────────────
+const SALT_ROUNDS = 10;
+const DEFAULT_PASSWORD = "Aapnogarage123";
+
+// ── Cookie config — defined once, reused everywhere ───────────────
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
@@ -24,133 +22,157 @@ const REFRESH_COOKIE_OPTIONS = {
 };
 
 // ─────────────────────────────────────────────────────────────────
-//  Step 1 · Request OTP
-//  Creates a user document (upsert) tied to the phone number and
-//  fires the OTP.  No sensitive data is returned in production.
+//  POST /auth/register
+//
+//  Three cases handled:
+//  1. User exists + has a password  → 409 (already registered)
+//  2. User exists + no password     → set default password (migration path
+//                                     for accounts created before password auth)
+//  3. New user                      → create with default password
 // ─────────────────────────────────────────────────────────────────
-const requestOTP = asyncHandler(async (req, res) => {
+const register = asyncHandler(async (req, res) => {
   const { phoneNo } = req.body;
 
-  const otp = generateOTP();
-  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+  // select: false on password — must explicitly include it here
+  const existingUser = await User.findOne({ phoneNo }).select("+password");
 
-  await User.findOneAndUpdate(
-    { phoneNo },
-    { otp: { code: hashOTP(otp), expiresAt, attempts: 0 } },
-    { upsert: true, returnDocument: "after" },
+  const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, SALT_ROUNDS);
+
+  if (existingUser) {
+    if (existingUser.password) {
+      // Already has a password — they should just login
+      return sendError(
+        res,
+        409,
+        "An account with this number already exists. Please login.",
+      );
+    }
+
+    // Account exists (old OTP user) but has no password — set default password
+    await User.findByIdAndUpdate(existingUser._id, {
+      password: hashedPassword,
+      isVerified: true, // ensure verified in case it wasn't
+    });
+
+    return sendSuccess(
+      res,
+      200,
+      "Password set for your account. Login with the default password.",
+    );
+  }
+
+  // Brand new user
+  await User.create({
+    phoneNo,
+    isVerified: true,
+    role: "owner",
+    password: hashedPassword,
+  });
+
+  return sendSuccess(
+    res,
+    201,
+    "Account created. Login with the default password.",
   );
-
-  await sendOTP(phoneNo, otp);
-
-  return sendSuccess(res, 200, "OTP sent successfully", otp);
 });
 
 // ─────────────────────────────────────────────────────────────────
-//  Step 2 · Verify OTP
-//  Validates the OTP, marks the user as verified, and issues tokens.
+//  POST /auth/login
+//
+//  Authenticates a user with phone + password.
+//  Returns access token, user, and garage on success.
 // ─────────────────────────────────────────────────────────────────
-const verifyOTP = asyncHandler(async (req, res) => {
-  const { phoneNo, otp } = req.body;
+const login = asyncHandler(async (req, res) => {
+  const { phoneNo, password } = req.body;
 
-  const user = await User.findOne({ phoneNo });
+  // select: false on password — must explicitly include it here
+  const user = await User.findOne({ phoneNo }).select("+password");
 
-  if (!user || !user.otp?.code)
-    return sendError(res, 404, "No OTP found. Request a new one.");
-
-  if (user.otp.attempts >= 3)
-    return sendError(res, 429, "Too many attempts. Request a new OTP.");
-
-  if (new Date() > user.otp.expiresAt)
-    return sendError(res, 400, "OTP expired. Request a new one.");
-
-  if (user.otp.code !== hashOTP(otp)) {
-    await User.updateOne({ phoneNo }, { $inc: { "otp.attempts": 1 } });
-    return sendError(res, 400, "Invalid OTP");
+  if (!user) {
+    return sendError(
+      res,
+      404,
+      "No account found with this phone number.",
+    );
   }
 
-  await User.updateOne({ phoneNo }, { isVerified: true, $unset: { otp: "" } });
+  if (!user.isVerified) {
+    return sendError(
+      res,
+      403,
+      "Account is not active. Please contact support.",
+    );
+  }
 
-  const verifiedUser = await User.findOne({ phoneNo });
+  if (!user.password) {
+    return sendError(
+      res,
+      401,
+      "Password not set. Please tap 'Create Account' to set up your default password.",
+    );
+  }
 
-  const accessToken = signAccessToken(verifiedUser);
-  const refreshToken = await generateAndSaveRefreshToken(verifiedUser);
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) {
+    return sendError(res, 401, "Incorrect password.");
+  }
+
+  const accessToken = signAccessToken(user);
+  const refreshToken = await generateAndSaveRefreshToken(user);
 
   res.cookie("refreshToken", refreshToken, REFRESH_COOKIE_OPTIONS);
 
-  const garage = await Garage.findOne({ owner: verifiedUser._id }).lean();
+  const garage = await Garage.findOne({ owner: user._id }).lean();
 
-  return sendSuccess(res, 200, "Mobile verified successfully", {
+  return sendSuccess(res, 200, "Login successful", {
     accessToken,
-    isProfileComplete: garage?.isProfileComplete ?? false,
-    user: verifiedUser,
+    user: user.toJSON(), // password stripped by toJSON()
     garage: garage ?? null,
+    isProfileComplete: garage?.isProfileComplete ?? false,
   });
 });
 
 // ─────────────────────────────────────────────────────────────────
-//  Step 3 · Resend OTP
-//  Rate-limited to one resend per 60 seconds.
+//  PATCH /auth/change-password  (protected)
+//
+//  Changes the authenticated user's password.
+//  Requires current password for verification (prevents CSRF misuse).
 // ─────────────────────────────────────────────────────────────────
-const resendOTP = asyncHandler(async (req, res) => {
-  const { phoneNo } = req.body;
+const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
 
-  const user = await User.findOne({ phoneNo });
+  const user = await User.findById(req.user._id).select("+password");
+  if (!user) return sendError(res, 404, "User not found.");
 
-  if (!user)
-    return sendError(
-      res,
-      404,
-      "No account found with this number. Request OTP first.",
-    );
-
-  // Enforce 60-second cooldown between resend requests
-  if (user.otp?.expiresAt) {
-    const otpLifetimeMs = OTP_EXPIRY_MINUTES * 60 * 1000;
-    const otpCreatedAt = new Date(user.otp.expiresAt).getTime() - otpLifetimeMs;
-    const secondsSinceSent = (Date.now() - otpCreatedAt) / 1000;
-
-    if (secondsSinceSent < 60) {
-      const waitSeconds = Math.ceil(60 - secondsSinceSent);
-      return sendError(
-        res,
-        429,
-        `Please wait ${waitSeconds} seconds before requesting a new OTP.`,
-      );
+  // If no password set (legacy / admin-created), skip current password check
+  if (user.password) {
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return sendError(res, 401, "Current password is incorrect.");
     }
   }
 
-  const otp = generateOTP();
-  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+  const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  await User.findByIdAndUpdate(req.user._id, { password: hashedPassword });
 
-  await User.updateOne(
-    { phoneNo },
-    { otp: { code: hashOTP(otp), expiresAt, attempts: 0 } },
-  );
-
-  await sendOTP(phoneNo, otp);
-
-  return sendSuccess(res, 200, "OTP resent successfully", otp);
+  return sendSuccess(res, 200, "Password changed successfully.");
 });
 
 // ─────────────────────────────────────────────────────────────────
-//  Step 4 · Complete Garage Profile
+//  POST /auth/update-garage-profile  (protected, owner only)
 //
-//  Accepts multipart/form-data OR application/json (the Zod validator
-//  handles both after the body is parsed by express.json / multer).
+//  Accepts multipart/form-data OR application/json.
 // ─────────────────────────────────────────────────────────────────
 const completeGarageProfile = asyncHandler(async (req, res) => {
-  // Only owners can set garage details
   if (req.user.role !== "owner")
     return sendError(res, 403, "Only owners can set garage details");
 
   const userId = req.user._id;
 
   const {
-    // User-level fields
     fullName,
     emailId,
     state,
-    // Garage-level fields
     garageName,
     garageOwnerName,
     garageAddress,
@@ -161,7 +183,6 @@ const completeGarageProfile = asyncHandler(async (req, res) => {
     gstNumber,
   } = req.body;
 
-  // ── 1. Update user profile fields ──────────────────────────────
   const updatedUser = await User.findByIdAndUpdate(
     userId,
     {
@@ -172,9 +193,6 @@ const completeGarageProfile = asyncHandler(async (req, res) => {
     { new: true, runValidators: true },
   );
 
-  // ── 2. Upsert garage document ───────────────────────────────────
-  //  findOneAndUpdate with upsert handles both first-time setup and
-  //  subsequent edits without the controller caring which case it is.
   const garagePayload = {
     garageName,
     garageOwnerName,
@@ -210,7 +228,7 @@ const getMyGarage = asyncHandler(async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────
-//  Refresh Access Token
+//  POST /auth/refresh  — rotate refresh token
 // ─────────────────────────────────────────────────────────────────
 const refresh = asyncHandler(async (req, res) => {
   const incomingToken = req.cookies?.refreshToken;
@@ -229,7 +247,7 @@ const refresh = asyncHandler(async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────
-//  Logout
+//  POST /auth/logout
 // ─────────────────────────────────────────────────────────────────
 const logout = asyncHandler(async (req, res) => {
   await revokeRefreshToken(req.user._id);
@@ -238,9 +256,8 @@ const logout = asyncHandler(async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────
-//  POST /auth/upload-image  — upload a garage logo / image
+//  POST /auth/upload-image
 //  Accepts multipart/form-data with field "file" (image only, ≤5MB)
-//  Returns { url } — the publicly accessible URL of the stored file
 // ─────────────────────────────────────────────────────────────────
 const uploadImage = asyncHandler(async (req, res) => {
   if (!req.file) return sendError(res, 400, "No file uploaded.");
@@ -250,10 +267,10 @@ const uploadImage = asyncHandler(async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────
 //  PATCH /auth/preferences  — save garage app preferences
-//  Body: { notificationsEnabled, autoUpdates, autoWaNotification, fontSize }
 // ─────────────────────────────────────────────────────────────────
 const updatePreferences = asyncHandler(async (req, res) => {
-  if (req.user.role !== "owner") return sendError(res, 403, "Only owners can update preferences.");
+  if (req.user.role !== "owner")
+    return sendError(res, 403, "Only owners can update preferences.");
 
   const garage = await Garage.findOne({ owner: req.user._id });
   if (!garage) return sendError(res, 404, "Garage not found.");
@@ -272,13 +289,15 @@ const updatePreferences = asyncHandler(async (req, res) => {
   garage.markModified("preferences");
   await garage.save();
 
-  return sendSuccess(res, 200, "Preferences saved.", { preferences: garage.preferences });
+  return sendSuccess(res, 200, "Preferences saved.", {
+    preferences: garage.preferences,
+  });
 });
 
 module.exports = {
-  requestOTP,
-  verifyOTP,
-  resendOTP,
+  register,
+  login,
+  changePassword,
   completeGarageProfile,
   getMyGarage,
   refresh,

@@ -7,7 +7,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/response.utils");
 const resolveGarageId = require("../utils/resolveGarageId");
 const escapeRegex     = require("../utils/escapeRegex");
-const { notifyUser, TEMPLATES } = require("../services/pushNotification.service");
+const { notifyUser, notifyBoth, TEMPLATES } = require("../services/pushNotification.service");
 
 async function nextOrderNo(garageId) {
   // Find the actual highest orderNo for this garage — safe against deletions and
@@ -287,11 +287,18 @@ const createRepairOrder = asyncHandler(async (req, res) => {
     }
   }
 
-  // Fire-and-forget push notification to customer
+  // Fire-and-forget: notify customer + garage owner
   if (customerId) {
     (async () => {
       try {
-        await notifyUser(customerId, TEMPLATES.REPAIR_ORDER_CREATED(order.orderNo));
+        const garage = await Garage.findById(garageId).select("owner").lean();
+        const customer = await User.findById(customerId).select("fullName").lean();
+        await notifyBoth(
+          customerId,
+          garage?.owner,
+          TEMPLATES.REPAIR_ORDER_CREATED(order.orderNo),
+          TEMPLATES.OWNER_ORDER_CREATED(order.orderNo, customer?.fullName),
+        );
       } catch (err) {
         console.error("[Push] RO created notification failed:", err.message);
       }
@@ -348,62 +355,69 @@ const updateRepairOrder = asyncHandler(async (req, res) => {
 
   // ── Notifications on status transitions ──────────────────────────
   //  All blocks are fire-and-forget — response is never held up.
+  //  Both customer AND garage owner are notified on every transition.
   // ─────────────────────────────────────────────────────────────────
 
-  // Repair started
-  if (req.body.status === "in_progress" && previousStatus !== "in_progress") {
-    (async () => {
-      try {
-        await notifyUser(order.customerId, TEMPLATES.REPAIR_STARTED(order.orderNo));
-      } catch (err) {
-        console.error("[Push] in_progress notification failed:", err.message);
-      }
-    })();
-  }
+  const statusChanged = req.body.status && req.body.status !== previousStatus;
 
-  // Vehicle ready — push + existing WhatsApp
-  if (req.body.status === "vehicle_ready" && previousStatus !== "vehicle_ready") {
+  if (statusChanged) {
     (async () => {
       try {
+        // One query to get garage (owner + prefs + name) and customer in parallel
         const [garage, customer] = await Promise.all([
-          Garage.findById(garageId).select("preferences garageName").lean(),
+          Garage.findById(garageId).select("owner preferences garageName").lean(),
           order.customerId
             ? User.findById(order.customerId).select("fullName phoneNo").lean()
             : null,
         ]);
 
-        const gName = garage?.garageName ?? "your garage";
+        const ownerId   = garage?.owner;
+        const gName     = garage?.garageName ?? "your garage";
+        const cName     = customer?.fullName || "Customer";
+        const orderNo   = order.orderNo;
 
-        // Push notification (always)
-        await notifyUser(
-          order.customerId,
-          TEMPLATES.VEHICLE_READY(order.orderNo, gName),
-        );
+        // ── in_progress ──────────────────────────────────────────────
+        if (req.body.status === "in_progress") {
+          await notifyBoth(
+            order.customerId,
+            ownerId,
+            TEMPLATES.REPAIR_STARTED(orderNo),
+            TEMPLATES.OWNER_REPAIR_STARTED(orderNo),
+          );
+        }
 
-        // WhatsApp (only when garage has enabled auto-WA)
-        if (garage?.preferences?.autoWaNotification && customer?.phoneNo) {
-          const cName = customer.fullName ?? "Customer";
-          const roNo  = order.orderNo ?? "your repair order";
-          const msg =
-            `Hi ${cName}! 🚗\n\n` +
-            `Your vehicle is ready for pickup at *${gName}*.\n` +
-            `Repair Order: *${roNo}*\n\n` +
-            `Please visit us at your earliest convenience. Thank you!`;
-          await sendWhatsApp(customer.phoneNo, msg);
+        // ── vehicle_ready ────────────────────────────────────────────
+        if (req.body.status === "vehicle_ready") {
+          await notifyBoth(
+            order.customerId,
+            ownerId,
+            TEMPLATES.VEHICLE_READY(orderNo, gName),
+            TEMPLATES.OWNER_VEHICLE_READY(orderNo, cName),
+          );
+
+          // WhatsApp (only when garage has enabled auto-WA)
+          if (garage?.preferences?.autoWaNotification && customer?.phoneNo) {
+            const roNo = orderNo ?? "your repair order";
+            const msg =
+              `Hi ${cName}! 🚗\n\n` +
+              `Your vehicle is ready for pickup at *${gName}*.\n` +
+              `Repair Order: *${roNo}*\n\n` +
+              `Please visit us at your earliest convenience. Thank you!`;
+            await sendWhatsApp(customer.phoneNo, msg);
+          }
+        }
+
+        // ── completed ────────────────────────────────────────────────
+        if (req.body.status === "completed") {
+          await notifyBoth(
+            order.customerId,
+            ownerId,
+            TEMPLATES.REPAIR_COMPLETED(orderNo),
+            TEMPLATES.OWNER_REPAIR_COMPLETED(orderNo),
+          );
         }
       } catch (err) {
-        console.error("[Notify] vehicle_ready failed:", err.message);
-      }
-    })();
-  }
-
-  // Repair completed
-  if (req.body.status === "completed" && previousStatus !== "completed") {
-    (async () => {
-      try {
-        await notifyUser(order.customerId, TEMPLATES.REPAIR_COMPLETED(order.orderNo));
-      } catch (err) {
-        console.error("[Push] completed notification failed:", err.message);
+        console.error("[Push] Status transition notification failed:", err.message);
       }
     })();
   }

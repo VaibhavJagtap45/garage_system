@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+
 //  User Schema
 const UserSchema = new mongoose.Schema(
   {
@@ -8,6 +9,7 @@ const UserSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+
     // ── Identity ──────────────────────────────────────────────────
     fullName: {
       type: String,
@@ -21,7 +23,6 @@ const UserSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       // No default — field must be absent (not null) for sparse index to exclude it.
-      // Storing null counts as a value and breaks the unique constraint for phone-only users.
     },
     phoneNo: {
       type: String,
@@ -29,7 +30,13 @@ const UserSchema = new mongoose.Schema(
       sparse: true,
     },
 
-    // ── Auth / Access Control ─────────────────────────────────────
+    // ── Auth ──────────────────────────────────────────────────────
+    // select: false — never returned in queries unless explicitly requested
+    password: {
+      type: String,
+      select: false,
+    },
+
     isVerified: {
       type: Boolean,
       default: false,
@@ -54,13 +61,6 @@ const UserSchema = new mongoose.Schema(
       default: null,
     },
 
-    // ── OTP (transient — cleared after verification) ───────────────
-    otp: {
-      code: { type: String },
-      expiresAt: { type: Date },
-      attempts: { type: Number, default: 0, max: 5 },
-    },
-
     // ── Refresh Token (hashed) ────────────────────────────────────
     refreshToken: {
       token: { type: String },
@@ -68,8 +68,6 @@ const UserSchema = new mongoose.Schema(
     },
 
     // ── Expo Push Token ───────────────────────────────────────────
-    // Stored as-is from the device (e.g. "ExponentPushToken[xxx]").
-    // Cleared automatically when Expo reports DeviceNotRegistered.
     pushToken: {
       type: String,
       default: null,
@@ -83,9 +81,9 @@ const UserSchema = new mongoose.Schema(
 // ── Strip sensitive fields from API responses ─────────────────────
 UserSchema.methods.toJSON = function () {
   const obj = this.toObject();
-  delete obj.otp;
+  delete obj.password;
   delete obj.refreshToken;
-  delete obj.pushToken; // device token — must never leak to API consumers
+  delete obj.pushToken;
   delete obj.__v;
   return obj;
 };
